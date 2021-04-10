@@ -7,8 +7,13 @@
 #Supported TAGS
 #SUPPORTED_TAGS="https://gitlab.com/nvidia/container-images/cuda/blob/master/doc/supported-tags.md"
 
-SECURITY_LEVEL=0
-SECURITY_CODES=()
+SECURITY_RISK_LEVEL=0
+SECURITY_WARNINGS=()
+
+DATETIME=$(date +%Y%m%d.%H%M)
+
+DOCKER_DELIVERED_TAR_DIRECTORY="/tmp/dockerd_img_extract.$DATETIME"
+DOCKER_VENDOR_TAR_DIRECTORY="/tmp/dockerv_img_extract.$DATETIME"
 
 DRY_RUN='false'
 DEBUG='false'
@@ -47,8 +52,43 @@ function print_v() {
    esac
 }
 
+#Function: set_docker_param(): set the param based on docker root
+# input: $1 tarfile to extract
+# input: $2 directory to extract to
+# return: 0 if successful 1 if not
+function extract_docker_image() {
+	local tarfile=$1
+	local dir=$2
+
+	print_v d "extract_docker_image: TARFILE=$tarfile"
+	print_v d "extract_docker_image: DIR=$dir"
+
+	if [[ $dir == "" || $tarfile == "" ]]; then
+		print_v v "extract_docker_image: DIR or FILE = '' exiting"
+		return 1
+	fi
+	return 0
+}
+
+#Function: print_final_report() Prints final security risk report
+function print_final_report() {
+	echo "DOCKER_IMAGE_HASH=$DOCKER_HASH"
+	
+	echo "Report for $DOCKER_IMAGE"
+	echo "Original Source image = ${aIMAGE_SOURCE_URL[$DOCKER_IMAGE]}"
+	echo "SECURITY RISK LEVEL = $SECURITY_RISK_LEVEL"
+	echo "Security Warnings:"
+	
+	for SECURITY_WARNING in "${SECURITY_WARNINGS[@]}"
+	do
+		echo "* $SECURITY_WARNING"
+	done
+}
 
 #Function: set_docker_param(): set the param based on docker root
+# input: $1 return variable
+# input: $2 associative array with valid parameters
+# input: $3 the key parameter to look up in $2 variable
 function set_docker_param() {
 	local known_docker_param='false'
 	local -n return_val=$1
@@ -146,6 +186,36 @@ function setup_docker_globals() {
 	print_v v "THIS DOCKER_IMAGE = $DOCKER_IMAGE"
 }
 
+#Function: docker_256sum_check() download and check hashes for docker image
+#
+# input: $1 Already downloaded file to check
+# input: $2 Where to download the file with hashes (e.g. verification data)
+# input: $3 the filename for where to save the hash file
+# global: SECURITY_RISK_LEVEL
+# global: SECURITY_WARNINGS
+function docker_256sum_check() {
+	local this_image_filename=$1
+	local this_image_hash_url=$2
+	local this_tmp_hashfile=$3
+	if [[ $this_image_hash_url != "" ]]; then
+		print_v d "Checking Image of $this_image_filename"
+		if [[ $DRY_RUN == 'false' ]]; then
+			wget -O "$this_tmp_hashfile" "$this_image_hash_url"
+		else
+			print_v v "Skipping new download of docker_iamge_hashes"
+		fi
+		if ! grep "$this_image_filename" "$this_tmp_hashfile" | awk '{print $1, "/tmp/latest_docker_image.tgz"}' | sha256sum --check --; then
+			echo "Download of Vendor original source image failed hash check."
+			echo "Failed hash check means also failed security audit. Exiting"
+			exit 1
+		fi
+	else
+		echo "Couldn't find vendor's source hash checks."
+		SECURITY_RISK_LEVEL=$((SECURITY_RISK_LEVEL + 1))
+		SECURITY_WARNINGS+=("Image not signed by vendor")
+	fi
+}
+
 #If called without args error out
 if [[ ${#} -eq 0 ]]; then
 	echo "Must be called with argument specifying client"
@@ -173,12 +243,13 @@ while getopts ${optstring} arg; do
 	esac
 done
 
+print_v d "BASH_SOURCE=${BASH_SOURCE[0]}"
+print_v d "PWD=$PWD"
+
 setup_docker_globals "$DOCKER_ROOT"
 
 #which image to analize
-i=1
 
-IMAGE_PRODUCTS=("cuda" "")
 
 #Declare Associative Array Variables for various sources
 declare -A aIMAGE_SOURCE_URL
@@ -199,7 +270,7 @@ aIMAGE_SOURCE_URL["nvidia:11.0-base"]="other"
 
 
 this_source_url=""
-print_v d " about to run aIMAGE_SOURCE_URL"
+print_v d " about to run aIMAGE_SOURCE_URL for $DOCKER_IMAGE, $THIS_DOCKER_TAG"
 #set variable this_source_url (where we download the source docker image)
 set_docker_param this_source_url aIMAGE_SOURCE_URL "$DOCKER_IMAGE"
 
@@ -220,10 +291,14 @@ print_v v "Source Image Identified as: ${aIMAGE_SOURCE_IMAGE[${DOCKER_IMAGE}]}"
 print_v v "Source URL Identified as: ${aIMAGE_SOURCE_URL[${DOCKER_IMAGE}]}"
 
 if [[ ${aIMAGE_SOURCE_URL[$DOCKER_IMAGE]} == "other" ]]; then
-	echo "This docker image doesn't use their own core image, skipping this step"
+	echo -n "This docker image doesn't use their own core image. "
+	echo -n "E.g. Nvidia uses a DockerFile that references Ubuntu/UBI/CentOS cores. "
+	echo "Skipping this step"
 elif [[ ${aIMAGE_SOURCE_URL[$DOCKER_IMAGE]} != "" ]]; then
 	if [[ $DRY_RUN == 'false' ]]; then
 		wget -O /tmp/latest_docker_image.tgz ${aIMAGE_SOURCE_URL[$DOCKER_IMAGE]}
+	else
+		print_v v "Dry Run: Skipping download of ${aIMAGE_SOURCE_URL[$DOCKER_IMAGE]}"
 	fi
 else
 	echo "Couldn't find vendor's source image file. Exiting."
@@ -231,30 +306,16 @@ else
 fi
 
 
-if [[ ${aIMAGE_SOURCE_HASHES[$DOCKER_IMAGE]} != "" ]]; then
-	print_v d "DEBUG 1: Uncomment to activate ${aIMAGE_SOURCE_IMAGE[$DOCKER_IMAGE]}"
-	if [[ $DRY_RUN == 'false' ]]; then
-		wget -O /tmp/docker_image_hashes.txt ${aIMAGE_SOURCE_HASHES[$DOCKER_IMAGE]}
-	else
-		print_v v "Skipping new download of docker_iamge_hashes"
-	fi
-	if ! grep ${aIMAGE_SOURCE_IMAGE[$DOCKER_IMAGE]} /tmp/docker_image_hashes.txt | awk '{print $1, "/tmp/latest_docker_image.tgz"}' | sha256sum --check --; then
-		echo "Download of Vendor original source image failed hash check."
-		echo "Failed hash check means also failed security audit. Exiting"
-		exit 1
-	fi
-else
-	echo "Couldn't find vendor's source hash checks."
-	SECURITY_LEVEL=$((SECURITY_LEVEL + 1))
-	SECURITY_CODES+=("Image not signed by vendor")
-fi
+#Download vendor source image and check that downloaded file image passes hash checks
+docker_256sum_check ${aIMAGE_SOURCE_IMAGE[$DOCKER_IMAGE]} ${aIMAGE_SOURCE_HASHES[$DOCKER_IMAGE]} /tmp/docker_image_hashes.txt
 
-exit 0
 
-#Get image to analize
+
+#Download docker source image if it passes docker signing
+print_v v "About to download docker image using 'sudo docker pull $DOCKER_IMAGE'"
 if ! sudo DOCKER_CONTENT_TRUST=1 docker pull "$DOCKER_IMAGE"; then
-	SECURITY_LEVEL=$((SECURITY_LEVEL + 1))
-	SECURITY_CODES+=("Image not signed by notary.docker.io")
+	SECURITY_RISK_LEVEL=$((SECURITY_RISK_LEVEL + 1))
+	SECURITY_WARNINGS+=("Image not signed by notary.docker.io")
 	if ! sudo docker pull "$DOCKER_IMAGE"; then
 		echo "Pulling $DOCKER_IMAGE failed: exiting"
 		exit 1
@@ -262,18 +323,38 @@ if ! sudo DOCKER_CONTENT_TRUST=1 docker pull "$DOCKER_IMAGE"; then
 fi
 
 #CHECK HASH once arrived
+print_v v "About to inspect image using 'sudo docker inspect $DOCKER_IMAGE'"
 DOCKER_HASH=$(sudo docker inspect "$DOCKER_IMAGE" | grep "$IMAGE_VENDOR_PRODUCT@sha256")
 
-echo "DOCKER_IMAGE_HASH=$DOCKER_HASH"
+CAN_DO_DIFF='true'
 
-echo "Report for $DOCKER_IMAGE"
-echo "SECURITY LEVEL = $SECURITY_LEVEL"
-echo "Errors:"
+if [ ! -d "$DOCKER_DELIVERED_TAR_DIRECTORY" ]; then
+	mkdir "$DOCKER_DELIVERED_TAR_DIRECTORY"
+	if ! extract_docker_image ${aIMAGE_SOURCE_IMAGE[$DOCKER_IMAGE]} "$DOCKER_DELIVERED_TAR_DIRECTORY"; then
+		CAN_DO_DIFF='false'
+	fi
+else
+	echo "$DOCKER_DELIVERED_TAR_DIRECTORY already exits, cowardly stopping"
+	exit 1
+fi
+if [ ! -d "$DOCKER_VENDOR_TAR_DIRECTORY" ]; then
+	mkdir "$DOCKER_VENDOR_TAR_DIRECTORY"
+	if ! extract_docker_image ${aIMAGE_SOURCE_IMAGE[$DOCKER_IMAGE]} "$DOCKER_VENDOR_TAR_DIRECTORY"; then
+		CAN_DO_DIFF='false'
+	fi
+else
+	echo "$DOCKER_VENDOR_TAR_DIRECTORY already exits, cowardly stopping"
+	exit 1
+fi
 
-for SECURITY_CODE in "${SECURITY_CODES[@]}"
-do
-	echo "* $SECURITY_CODE"
-done
+if [[ $CAN_DO_DIFF == 'true' ]]; then
+	print_v v "About to do security comparison of $DOCKER_VENDOR_TAR_DIRECTORY and $DOCKER_DELIVERED_TAR_DIRECTORY"
+	# shellcheck disable=1091
+	source ./SCAP_docker.sh
+fi
+
+print_final_report
+
 
 # tabs instead of spaces in bash scripts for heredoc <<-
 # vim: ts=4 noexpandtab
