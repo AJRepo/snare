@@ -25,7 +25,7 @@ function usage() {
 	echo '   -d    Debug mode (print more)'
 	echo '   -v    Verbose mode (print more)'
 	echo '   -n    Dry Run (do not download)'
-	echo '   -r    Root docker image to analize (nvida, ubuntu)'
+	echo '   -r    Root docker image to analyze (nvida, ubuntu)'
 	exit 1
 }
 
@@ -246,9 +246,11 @@ done
 print_v d "BASH_SOURCE=${BASH_SOURCE[0]}"
 print_v d "PWD=$PWD"
 
+source ./SCAP_docker.sh A Basdfasdf
+exit
 setup_docker_globals "$DOCKER_ROOT"
 
-#which image to analize
+#which image to analyze
 
 
 #Declare Associative Array Variables for various sources
@@ -256,7 +258,7 @@ declare -A aIMAGE_SOURCE_URL
 declare -A aIMAGE_SOURCE_HASHES
 declare -A aIMAGE_SOURCE_IMAGE
 aIMAGE_SOURCE_IMAGE["ubuntu:focal"]="ubuntu-focal-core-cloudimg-amd64-root.tar.gz"
-aIMAGE_SOURCE_IMAGE["nvidia:11.0-base"]=""
+aIMAGE_SOURCE_IMAGE["nvidia:11.0-base"]="Dockerfile"
 
 aIMAGE_SOURCE_HASHES["ubuntu:focal"]="https://partner-images.canonical.com/core/focal/current/SHA256SUMS"
 #NVIDIA Doesn't have them
@@ -266,7 +268,7 @@ aIMAGE_SOURCE_HASHES["nvidia:11.0-base"]=""
 # NVIDIA: Uses Ubuntu for their core image. So looking at NVIDIA requires looking
 #         at the base Ubuntu packages and then NVIDIA deb packages.
 aIMAGE_SOURCE_URL["ubuntu:focal"]="https://partner-images.canonical.com/core/focal/current/${aIMAGE_SOURCE_IMAGE['ubuntu:focal']}"
-aIMAGE_SOURCE_URL["nvidia:11.0-base"]="other"
+aIMAGE_SOURCE_URL["nvidia:11.0-base"]="https://gitlab.com/nvidia/container-images/cuda/blob/master/dist/11.2.2/ubuntu20.04-x86_64/runtime/cudnn8/Dockerfile"
 
 
 this_source_url=""
@@ -290,24 +292,32 @@ print_v v "Checking $DOCKER_IMAGE"
 print_v v "Source Image Identified as: ${aIMAGE_SOURCE_IMAGE[${DOCKER_IMAGE}]}"
 print_v v "Source URL Identified as: ${aIMAGE_SOURCE_URL[${DOCKER_IMAGE}]}"
 
-if [[ ${aIMAGE_SOURCE_URL[$DOCKER_IMAGE]} == "other" ]]; then
+if [[ ${aIMAGE_SOURCE_IMAGE[$DOCKER_IMAGE]} == "Dockerfile" ]]; then
 	echo -n "This docker image doesn't use their own core image. "
 	echo -n "E.g. Nvidia uses a DockerFile that references Ubuntu/UBI/CentOS cores. "
-	echo "Skipping this step"
+	echo "Getting DockerFile"
+	DOCKERFILE_ONLY='true'
+	if [[ $DRY_RUN == 'false' ]]; then
+		wget -O /tmp/latest_docker_file ${aIMAGE_SOURCE_URL[$DOCKER_IMAGE]}
+	else
+		print_v v "Dry Run: Skipping download of ${aIMAGE_SOURCE_URL[$DOCKER_IMAGE]}"
+	fi
 elif [[ ${aIMAGE_SOURCE_URL[$DOCKER_IMAGE]} != "" ]]; then
+	DOCKERFILE_ONLY='false'
 	if [[ $DRY_RUN == 'false' ]]; then
 		wget -O /tmp/latest_docker_image.tgz ${aIMAGE_SOURCE_URL[$DOCKER_IMAGE]}
 	else
 		print_v v "Dry Run: Skipping download of ${aIMAGE_SOURCE_URL[$DOCKER_IMAGE]}"
 	fi
+
+	#Download vendor source image and check that downloaded file image passes hash checks
+	docker_256sum_check ${aIMAGE_SOURCE_IMAGE[$DOCKER_IMAGE]} ${aIMAGE_SOURCE_HASHES[$DOCKER_IMAGE]} /tmp/docker_image_hashes.txt
+
 else
 	echo "Couldn't find vendor's source image file. Exiting."
 	exit 1
 fi
 
-
-#Download vendor source image and check that downloaded file image passes hash checks
-docker_256sum_check ${aIMAGE_SOURCE_IMAGE[$DOCKER_IMAGE]} ${aIMAGE_SOURCE_HASHES[$DOCKER_IMAGE]} /tmp/docker_image_hashes.txt
 
 
 
@@ -325,6 +335,11 @@ fi
 #CHECK HASH once arrived
 print_v v "About to inspect image using 'sudo docker inspect $DOCKER_IMAGE'"
 DOCKER_HASH=$(sudo docker inspect "$DOCKER_IMAGE" | grep "$IMAGE_VENDOR_PRODUCT@sha256")
+
+if [[ $DOCKERFILE_ONLY == 'true' ]]; then
+	echo "Dockerfile only. Can't do diff. Stopping and re-evaluate with core image"
+	exit 0
+fi
 
 CAN_DO_DIFF='true'
 
@@ -347,10 +362,13 @@ else
 	exit 1
 fi
 
+
+# Extracting the layers and then extracting the layers all to one combined directory.
+# Then analyze shared image to vendor core image
 if [[ $CAN_DO_DIFF == 'true' ]]; then
 	print_v v "About to do security comparison of $DOCKER_VENDOR_TAR_DIRECTORY and $DOCKER_DELIVERED_TAR_DIRECTORY"
 	# shellcheck disable=1091
-	source ./SCAP_docker.sh
+	source ./SCAP_docker.sh "$DOCKER_VENDOR_TAR_DIRECTORY" "$DOCKER_DELIVERED_TAR_DIRECTORY"
 fi
 
 print_final_report
