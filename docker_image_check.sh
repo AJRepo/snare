@@ -10,11 +10,6 @@
 SECURITY_RISK_LEVEL=0
 SECURITY_WARNINGS=()
 
-DATETIME=$(date +%Y%m%d.%H%M)
-
-DOCKER_DELIVERED_TAR_DIRECTORY="/tmp/dockerd_img_extract.$DATETIME"
-DOCKER_VENDOR_TAR_DIRECTORY="/tmp/dockerv_img_extract.$DATETIME"
-
 DRY_RUN='false'
 DEBUG='false'
 VERBOSE='false'
@@ -52,23 +47,6 @@ function print_v() {
    esac
 }
 
-#Function: set_docker_param(): set the param based on docker root
-# input: $1 tarfile to extract
-# input: $2 directory to extract to
-# return: 0 if successful 1 if not
-function extract_docker_image() {
-	local tarfile=$1
-	local dir=$2
-
-	print_v d "extract_docker_image: TARFILE=$tarfile"
-	print_v d "extract_docker_image: DIR=$dir"
-
-	if [[ $dir == "" || $tarfile == "" ]]; then
-		print_v v "extract_docker_image: DIR or FILE = '' exiting"
-		return 1
-	fi
-	return 0
-}
 
 #Function: print_final_report() Prints final security risk report
 function print_final_report() {
@@ -246,8 +224,6 @@ done
 print_v d "BASH_SOURCE=${BASH_SOURCE[0]}"
 print_v d "PWD=$PWD"
 
-source ./SCAP_docker.sh A Basdfasdf
-exit
 setup_docker_globals "$DOCKER_ROOT"
 
 #which image to analyze
@@ -298,7 +274,7 @@ if [[ ${aIMAGE_SOURCE_IMAGE[$DOCKER_IMAGE]} == "Dockerfile" ]]; then
 	echo "Getting DockerFile"
 	DOCKERFILE_ONLY='true'
 	if [[ $DRY_RUN == 'false' ]]; then
-		wget -O /tmp/latest_docker_file ${aIMAGE_SOURCE_URL[$DOCKER_IMAGE]}
+		wget -O /tmp/latest_docker_file.dockerfile ${aIMAGE_SOURCE_URL[$DOCKER_IMAGE]}
 	else
 		print_v v "Dry Run: Skipping download of ${aIMAGE_SOURCE_URL[$DOCKER_IMAGE]}"
 	fi
@@ -317,9 +293,6 @@ else
 	echo "Couldn't find vendor's source image file. Exiting."
 	exit 1
 fi
-
-
-
 
 #Download docker source image if it passes docker signing
 print_v v "About to download docker image using 'sudo docker pull $DOCKER_IMAGE'"
@@ -341,35 +314,12 @@ if [[ $DOCKERFILE_ONLY == 'true' ]]; then
 	exit 0
 fi
 
-CAN_DO_DIFF='true'
-
-if [ ! -d "$DOCKER_DELIVERED_TAR_DIRECTORY" ]; then
-	mkdir "$DOCKER_DELIVERED_TAR_DIRECTORY"
-	if ! extract_docker_image ${aIMAGE_SOURCE_IMAGE[$DOCKER_IMAGE]} "$DOCKER_DELIVERED_TAR_DIRECTORY"; then
-		CAN_DO_DIFF='false'
-	fi
-else
-	echo "$DOCKER_DELIVERED_TAR_DIRECTORY already exits, cowardly stopping"
-	exit 1
-fi
-if [ ! -d "$DOCKER_VENDOR_TAR_DIRECTORY" ]; then
-	mkdir "$DOCKER_VENDOR_TAR_DIRECTORY"
-	if ! extract_docker_image ${aIMAGE_SOURCE_IMAGE[$DOCKER_IMAGE]} "$DOCKER_VENDOR_TAR_DIRECTORY"; then
-		CAN_DO_DIFF='false'
-	fi
-else
-	echo "$DOCKER_VENDOR_TAR_DIRECTORY already exits, cowardly stopping"
-	exit 1
-fi
-
 
 # Extracting the layers and then extracting the layers all to one combined directory.
 # Then analyze shared image to vendor core image
-if [[ $CAN_DO_DIFF == 'true' ]]; then
-	print_v v "About to do security comparison of $DOCKER_VENDOR_TAR_DIRECTORY and $DOCKER_DELIVERED_TAR_DIRECTORY"
-	# shellcheck disable=1091
-	source ./SCAP_docker.sh "$DOCKER_VENDOR_TAR_DIRECTORY" "$DOCKER_DELIVERED_TAR_DIRECTORY"
-fi
+print_v v "About to do security comparison of ${aIMAGE_SOURCE_IMAGE[$DOCKER_IMAGE]} and $DOCKER_IMAGE"
+# shellcheck disable=1091
+source ./SCAP_docker.sh "${aIMAGE_SOURCE_IMAGE[$DOCKER_IMAGE]}" "$DOCKER_IMAGE"
 
 print_final_report
 
