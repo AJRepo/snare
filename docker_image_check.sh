@@ -17,11 +17,12 @@ DEBUG='false'
 VERBOSE='false'
 
 
-# Function: usage() print usage.
-function usage() {
+# Function: print_usage() print usage.
+function print_usage() {
 	echo "Usage: $(basename "$0") -p " 2>&1
 	echo '   -c <0|1>    DOCKER_CONTENT_TRUST= (defaults to 1)'
 	echo '   -d          Debug mode (print more)'
+	echo '   -h          Help'
 	echo '   -v          Verbose mode (print more)'
 	echo '   -n          Dry Run (do not download)'
 	echo '   -r <name>   Root docker image to analyze (nvida, ubuntu)'
@@ -287,7 +288,7 @@ function which_docker_core_image() {
 #If called without args error out
 if [[ ${#} -eq 0 ]]; then
 	echo "Must be called with argument specifying client"
-	usage
+	print_usage
 	exit 1
 fi
 
@@ -295,11 +296,15 @@ DOCKER_CONTENT_TRUST=1
 DOCKER_TAG=""
 DEBUG='false'
 VERBOSE='false'
-optstring="vndr:t:c:"
+optstring="hvndr:t:c:"
 while getopts ${optstring} arg; do
 	case ${arg} in
 	c)
 		DOCKER_CONTENT_TRUST="${OPTARG}"
+	;;
+	h)
+		print_usage
+		exit 0
 	;;
 	n)
 		DRY_RUN='true'
