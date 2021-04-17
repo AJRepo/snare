@@ -10,6 +10,8 @@
 SECURITY_RISK_LEVEL=0
 SECURITY_WARNINGS=()
 
+LOCAL_VENDOR_ROOT_DIR="/srv/dockercheck/"
+
 DRY_RUN='false'
 DEBUG='false'
 VERBOSE='false'
@@ -81,8 +83,8 @@ function set_docker_param() {
 
 	if [[ $param_to_lookup == "" ]]; then
 		echo "Docker param not set. Picking default"
-		this_docker_root=$( echo "${!aa_valid_params[@]}" | awk '{print $0}')
-		return_val=${aa_valid_params[$this_docker_root]}
+		this_docker_core=$( echo "${!aa_valid_params[@]}" | awk '{print $0}')
+		return_val=${aa_valid_params[$this_docker_core]}
 		known_docker_param='true'
 	else
 		if [[ ${aa_valid_params[$param_to_lookup]} != "" ]]; then
@@ -102,12 +104,12 @@ function set_docker_param() {
 }
 
 # Function: pass in root and optionally tag, product for analysis
-# this_docker_root string: is required
+# this_docker_core string: is required
 function setup_docker_globals() {
     local optarg_docker_root=$1
     local this_docker_tag=$2
 	local this_docker_product=''
-    local this_docker_root=''
+    local this_docker_core=''
 
 	declare -A aIMAGE_ROOT
 	declare -A aIMAGE_TAG
@@ -124,18 +126,18 @@ function setup_docker_globals() {
 	aIMAGE_PRODUCT["ubuntu"]=""
 	aIMAGE_PRODUCT["nvidia"]="cuda"
 
-	print_v d " $this_docker_root with " "${aIMAGE_ROOT[@]}"
+	print_v d " $this_docker_core with " "${aIMAGE_ROOT[@]}"
 
 	#set variable this_docker_tag
-	set_docker_param this_docker_root aIMAGE_ROOT "$optarg_docker_root"
-	if [[ $this_docker_root == '' ]]; then
+	set_docker_param this_docker_core aIMAGE_ROOT "$optarg_docker_root"
+	if [[ $this_docker_core == '' ]]; then
 		echo "Error: No docker root set. Exiting 1"
 		exit 1
 	fi
 
 	#print_v d " about to lookup aIMAGE_PRODUCT"
 	#set variable this_docker_tag
-	set_docker_param this_docker_tag aIMAGE_TAG "$this_docker_root"
+	set_docker_param this_docker_tag aIMAGE_TAG "$this_docker_core"
 
 	if [[ $this_docker_tag == 'false' ]]; then
 		echo "Error: Docker tag not set. Used " "${aIMAGE_TAG[@]}" " Error: exiting"
@@ -146,7 +148,7 @@ function setup_docker_globals() {
 
 	#set variable this_docker_product
 	print_v d " about to lookup aIMAGE_PRODUCT"
-	set_docker_param this_docker_product aIMAGE_PRODUCT "$this_docker_root"
+	set_docker_param this_docker_product aIMAGE_PRODUCT "$this_docker_core"
 
 	if [[ $this_docker_product == 'false' ]]; then
 		echo "Error: Docker product not set. Used " "${aIMAGE_PRODUCT[@]}" " Error: exiting"
@@ -155,14 +157,14 @@ function setup_docker_globals() {
 		print_v d " Docker product=$this_docker_product"
 	fi
 
-	print_v v "THIS DOCKER ROOT = $this_docker_root"
+	print_v v "THIS DOCKER ROOT = $this_docker_core"
 	print_v v "THIS DOCKER TAG = $this_docker_tag"
 	print_v v "THIS DOCKER PRODUCT = $this_docker_product"
 
-	THIS_DOCKER_ROOT="$this_docker_root"
+	THIS_DOCKER_CORE="$this_docker_core"
 	THIS_DOCKER_TAG="$this_docker_tag"
 	THIS_DOCKER_PRODUCT="$this_docker_product"
-	DOCKER_IMAGE="$this_docker_root:$this_docker_tag"
+	DOCKER_IMAGE="$this_docker_core:$this_docker_tag"
 	print_v v "THIS DOCKER_IMAGE = $DOCKER_IMAGE"
 }
 
@@ -290,7 +292,8 @@ setup_docker_globals "$DOCKER_ROOT"
 
 
 #Declare Associative Array Variables for various sources
-declare -A aIMAGE_SOURCE_DIR
+declare -A aIMAGE_CORE_DIR
+declare -A aIMAGE_TAG_DIR
 declare -A aIMAGE_SOURCE_URL
 declare -A aIMAGE_SOURCE_HASHES
 declare -A aIMAGE_SOURCE_IMAGE_FILE
@@ -310,8 +313,15 @@ aIMAGE_SOURCE_URL["nvidia:11.0-base"]="https://gitlab.com/nvidia/container-image
 # NVIDIA: See https://ngc.nvidia.com/catalog/containers/nvidia:cuda
 # NVIDIA: Uses Ubuntu for their core image. So looking at NVIDIA requires looking
 #         at the base Ubuntu packages and then NVIDIA deb packages.
-aIMAGE_SOURCE_DIR["ubuntu:focal"]="https://partner-images.canonical.com/core/focal/"
-aIMAGE_SOURCE_DIR["nvidia:11.0-base"]="https://gitlab.com/nvidia/container-images/cuda/blob/master/dist/11.2.2/ubuntu20.04-x86_64/runtime/cudnn8/"
+#declare -A aIMAGE_SOURCE_DIR
+#aIMAGE_SOURCE_DIR["ubuntu:focal"]="https://partner-images.canonical.com/core/focal/"
+#aIMAGE_SOURCE_DIR["nvidia:11.0-base"]="https://gitlab.com/nvidia/container-images/cuda/blob/master/dist/11.2.2/ubuntu20.04-x86_64/runtime/cudnn8/"
+
+aIMAGE_CORE_DIR["ubuntu"]="https://partner-images.canonical.com/core/"
+aIMAGE_CORE_DIR["nvidia"]="https://gitlab.com/nvidia/container-images/cuda/blob/master/dist/11.2.2/ubuntu20.04-x86_64/runtime/"
+
+aIMAGE_TAG_DIR["focal"]="focal/"
+aIMAGE_TAG_DIR["11.0-base"]="cudnn8/"
 
 this_source_url=""
 print_v d " about to run aIMAGE_SOURCE_URL for $DOCKER_IMAGE, $THIS_DOCKER_TAG"
@@ -322,9 +332,9 @@ print_v d "SOURCE URL= $this_source_url"
 
 
 if [[ $THIS_DOCKER_PRODUCT != "" ]]; then
-	IMAGE_VENDOR_PRODUCT="$THIS_DOCKER_ROOT/$THIS_DOCKER_PRODUCT"
+	IMAGE_VENDOR_PRODUCT="$THIS_DOCKER_CORE/$THIS_DOCKER_PRODUCT"
 else
-	IMAGE_VENDOR_PRODUCT="$THIS_DOCKER_ROOT"
+	IMAGE_VENDOR_PRODUCT="$THIS_DOCKER_CORE"
 fi
 
 #DOCKER_IMAGE set in setup_arrays
@@ -350,7 +360,9 @@ elif [[ ${aIMAGE_SOURCE_URL[$DOCKER_IMAGE]} != "" ]]; then
 	DOCKERFILE_ONLY='false'
 	DO_HASH_CHECK='true'
 	if [[ $DRY_RUN == 'false' ]]; then
-		wget -O $VENDOR_TGZ_DOWNLOAD_FILE ${aIMAGE_SOURCE_URL[$DOCKER_IMAGE]}
+		wget --directory-prefix="$LOCAL_VENDOR_ROOT_DIR" \
+             --force-directories \
+             -N  ${aIMAGE_SOURCE_URL[$DOCKER_IMAGE]}
 	else
 		print_v v "Dry Run: Skipping download of ${aIMAGE_SOURCE_URL[$DOCKER_IMAGE]}"
 	fi
@@ -390,19 +402,21 @@ IMAGE_CREATION_DATE=""
 docker_creation_date "$DOCKER_IMAGE" IMAGE_CREATION_DATE
 print_v v "Docker Creation Date = $IMAGE_CREATION_DATE"
 
-docker_local_image_directory="/srv/docker.$DOCKER_IMAGE.$IMAGE_CREATION_DATE"
-if [ -d "$docker_local_image_directory" ]; then
+DOCKER_LOCAL_IMAGE_DIRECTORY="/srv/docker.$DOCKER_IMAGE.$IMAGE_CREATION_DATE"
+if [ -d "$DOCKER_LOCAL_IMAGE_DIRECTORY" ]; then
 	print_v v "Docker local image already saved"
 else
-	print_v v "Making Directory $docker_local_image_directory"
-	mkdir "$docker_local_image_directory"
+	print_v v "Making Directory $DOCKER_LOCAL_IMAGE_DIRECTORY"
+	mkdir "$DOCKER_LOCAL_IMAGE_DIRECTORY"
 fi
 
 THIS_DOCKER_VENDOR_IMAGE=""
-which_docker_core_image "${aIMAGE_SOURCE_DIR[$DOCKER_IMAGE]}" "$IMAGE_CREATION_DATE" "${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}" THIS_DOCKER_VENDOR_IMAGE
+which_docker_core_image "${aIMAGE_CORE_DIR[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}" "$IMAGE_CREATION_DATE" "${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}" THIS_DOCKER_VENDOR_IMAGE
 
 print_v d "DOCKER_IMAGE=$DOCKER_IMAGE"
 print_v d "THIS_DOCKER_TAG=$THIS_DOCKER_TAG"
+print_v d "THIS_CORE_DIR=${aIMAGE_CORE_DIR[$THIS_DOCKER_CORE]}"
+print_v d "THIS_TAG_DIR=${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}"
 print_v d "IMAGE_CREATION_DATE=$IMAGE_CREATION_DATE"
 print_v d "THIS_DOCKER_VENDOR_IMAGE=$THIS_DOCKER_VENDOR_IMAGE"
 
