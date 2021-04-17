@@ -177,32 +177,29 @@ function setup_docker_globals() {
 
 #Function: docker_256sum_check() download and check hashes for docker image
 #
-# input: $1 Already downloaded file to check
-# input: $2 Where to download the file with hashes (e.g. verification data)
-# input: $3 the filename for where to save the hash file
+# input: $1 the full path to the file to check
+# input: $2 the filename for where to save the hash file
 # global: SECURITY_RISK_LEVEL
 # global: SECURITY_WARNINGS
 function docker_256sum_check() {
-	local this_image_filename=$1
-	local this_image_hash_url=$2
-	local this_tmp_hashfile=$3
-	local this_file_to_check=$VENDOR_TGZ_DOWNLOAD_FILE
-	if [[ $this_image_hash_url != "" ]]; then
+	local this_file_to_check=$1
+	local this_file_of_hashes=$2
+	local this_image_filename=""
+	this_image_filename=$(basename "$this_file_to_check")
+
+	print_v d "this_file_to_check=$this_file_to_check"
+	print_v d "this_file_of_hashes=$this_file_of_hashes"
+	print_v d "this_image_filename=$this_image_filename"
+
+	if [[ $this_file_of_hashes != "" ]]; then
 		print_v d "Checking Image of $this_image_filename"
-		if [[ $DRY_RUN == 'false' ]]; then
-			wget -O "$this_tmp_hashfile" "$this_image_hash_url"
-		else
-			print_v v "Skipping new download of docker_iamge_hashes"
-		fi
-		if ! grep "$this_image_filename" "$this_tmp_hashfile" | awk -F tf=$this_file_to_check '{print $1, tf}' | sha256sum --check --; then
+		if ! grep "$this_image_filename" "$this_file_of_hashes" | awk -v tf="$this_file_to_check" '{print $1, tf}' | sha256sum --check --; then
 			echo "Download of Vendor original source image failed hash check."
 			echo "Failed hash check means also failed security audit. Exiting"
 			exit 1
 		fi
 	else
 		echo "Couldn't find vendor's source hash checks."
-		SECURITY_RISK_LEVEL=$((SECURITY_RISK_LEVEL + 1))
-		SECURITY_WARNINGS+=("Image not signed by vendor")
 	fi
 }
 
@@ -257,15 +254,15 @@ function which_docker_core_image() {
 	local core_url=$1
 	local docker_date=$2
 	local this_source_image_file=$3
-	local -n this_docker_vendor_image=$4
-	local greatest_date=""
+	#local -n this_docker_vendor_image=$4
+	local -n greatest_date=$4
 	local local_hmsdate=""
 	if [[ $1 = "" ]]; then
 		"Error in getting core_url, exiting"
 		exit 1
 	fi
 	
-	for date_dir in $(wget --level=0 -O - "$core_url" | sed -e /current/d | grep folder | sed /.*href=\"/s/// | sed /\\/.*/s///); do
+	for date_dir in $(wget -q --level=0 -O - "$core_url" | sed -e /current/d | grep folder | sed /.*href=\"/s/// | sed /\\/.*/s///); do
 		local_hmsdate="${date_dir}000000"
 		print_v d "Testing if $local_hmsdate, $date_dir <= $docker_date"
 		if [ "$local_hmsdate" -le "$docker_date" ]; then
@@ -337,14 +334,14 @@ setup_docker_globals "$DOCKER_ROOT"
 declare -A aIMAGE_CORE
 declare -A aIMAGE_TAG_DIR
 #declare -A aIMAGE_SOURCE_URL
-declare -A aIMAGE_SOURCE_HASHES
 declare -A aIMAGE_SOURCE_IMAGE_FILE
 aIMAGE_SOURCE_IMAGE_FILE["ubuntu:focal"]="ubuntu-focal-core-cloudimg-amd64-root.tar.gz"
 aIMAGE_SOURCE_IMAGE_FILE["nvidia:11.0-base"]="Dockerfile"
 
-aIMAGE_SOURCE_HASHES["ubuntu:focal"]="https://partner-images.canonical.com/core/focal/current/SHA256SUMS"
-#NVIDIA Doesn't have them
-aIMAGE_SOURCE_HASHES["nvidia:11.0-base"]=""
+#declare -A aIMAGE_SOURCE_HASHES
+#aIMAGE_SOURCE_HASHES["ubuntu:focal"]="https://partner-images.canonical.com/core/focal/current/SHA256SUMS"
+##NVIDIA Doesn't have them
+#aIMAGE_SOURCE_HASHES["nvidia:11.0-base"]=""
 
 # NVIDIA: See https://ngc.nvidia.com/catalog/containers/nvidia:cuda
 # NVIDIA: Uses Ubuntu for their core image. So looking at NVIDIA requires looking
@@ -370,7 +367,6 @@ aIMAGE_TAG_DIR["11.0-base"]="cudnn8/"
 #set variable this_source_url (where we download the source docker image)
 #set_docker_param this_source_url aIMAGE_SOURCE_URL "$DOCKER_IMAGE"
 #print_v d "SOURCE URL= $this_source_url"
-
 
 if [[ $THIS_DOCKER_PRODUCT != "" ]]; then
 	IMAGE_VENDOR_PRODUCT="$THIS_DOCKER_CORE/$THIS_DOCKER_PRODUCT"
@@ -419,10 +415,20 @@ else
 fi
 
 THIS_DOCKER_VENDOR_IMAGE=""
-which_docker_core_image "https://${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}" "$IMAGE_CREATION_DATE" "${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}" THIS_DOCKER_VENDOR_IMAGE
+which_docker_core_image "https://${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}" "$IMAGE_CREATION_DATE" "${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}" THIS_DOCKER_VENDOR_DATE
+
+if [[ $THIS_DOCKER_VENDOR_DATE == "" ]]; then
+	echo "Error: No vendor date"
+	exit 1
+fi
+THIS_DOCKER_VENDOR_IMAGE="${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}/$THIS_DOCKER_VENDOR_DATE/${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}"
+THIS_DOCKER_VENDOR_HASH="${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}/$THIS_DOCKER_VENDOR_DATE/SHA256SUMS"
+THIS_DOCKER_VENDOR_IMAGE_URL="https://$THIS_DOCKER_VENDOR_IMAGE"
+THIS_DOCKER_VENDOR_HASH_URL="https://$THIS_DOCKER_VENDOR_HASH"
 
 print_v d "DOCKER_IMAGE=$DOCKER_IMAGE"
 print_v d "THIS_DOCKER_TAG=$THIS_DOCKER_TAG"
+print_v d "THIS_DOCKER_VENDOR_DATE=$THIS_DOCKER_VENDOR_DATE"
 print_v d "THIS_CORE_DIR=${aIMAGE_CORE[$THIS_DOCKER_CORE]}"
 print_v d "THIS_TAG_DIR=${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}"
 print_v d "IMAGE_CREATION_DATE=$IMAGE_CREATION_DATE"
@@ -433,8 +439,6 @@ print_v v "Checking $DOCKER_IMAGE"
 print_v v "Source Image Identified as: ${aIMAGE_SOURCE_IMAGE_FILE[${DOCKER_IMAGE}]}"
 #print_v v "Source URL Identified as: ${aIMAGE_SOURCE_URL[${DOCKER_IMAGE}]}"
 
-echo "TESTING TO HERE" 
-exit 
 
 if [[ ${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]} == "Dockerfile" ]]; then
 	echo -n "This docker image doesn't use their own core image. "
@@ -449,16 +453,23 @@ if [[ ${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]} == "Dockerfile" ]]; then
 	fi
 else 
 	DOCKERFILE_ONLY='false'
-	DO_HASH_CHECK='true'
-	download_source_image ${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]} $LOCAL_VENDOR_ROOT_DIR
-fi
+	print_v v "About to download $THIS_DOCKER_VENDOR_IMAGE_URL"
+	download_source_image "$THIS_DOCKER_VENDOR_IMAGE_URL" $LOCAL_VENDOR_ROOT_DIR
 
-#will be downloaded to /local.path/remote.path/filename
+	if [[ $THIS_DOCKER_VENDOR_HASH_URL == "" ]]; then
+		SECURITY_RISK_LEVEL=$((SECURITY_RISK_LEVEL + 1))
+		SECURITY_WARNINGS+=("Image not signed by vendor")
+		DO_HASH_CHECK='false'
+	else 
+		download_source_image "$THIS_DOCKER_VENDOR_HASH_URL" $LOCAL_VENDOR_ROOT_DIR
+		DO_HASH_CHECK='true'
+	fi
+fi
 
 
 if [[ $DO_HASH_CHECK == 'true' ]]; then
-	#Download vendor hash file and check downloaded file image passes hash checks
-	docker_256sum_check ${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]} ${aIMAGE_SOURCE_HASHES[$DOCKER_IMAGE]} /tmp/docker_image_hashes.txt "$LOCAL_VENDOR_ROOT_DIR/${aIMAGE_CORE[$DOCKER_CORE]}/${aIMAGE_TAG_DIR[$DOCKER_TAG]}/date/filename"
+	#check downloaded file image passes hash checks
+	docker_256sum_check "$LOCAL_VENDOR_ROOT_DIR/$THIS_DOCKER_VENDOR_IMAGE" "$LOCAL_VENDOR_ROOT_DIR/$THIS_DOCKER_VENDOR_HASH"
 fi
 
 
