@@ -17,8 +17,6 @@ DEBUG='false'
 VERBOSE='false'
 
 
-VENDOR_TGZ_DOWNLOAD_FILE="/tmp/latest_docker_image.tgz"
-
 # Function: usage() print usage.
 function usage() {
 	echo "Usage: $(basename "$0") -p " 2>&1
@@ -475,9 +473,9 @@ fi
 
 # Extracting the layers and then extracting the layers all to one combined directory.
 # Then analyze shared image to vendor core image
-print_v v "About to do security comparison of ${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]} and $DOCKER_IMAGE"
+print_v v "About to do security comparison of $LOCAL_VENDOR_ROOT_DIR/$THIS_DOCKER_VENDOR_IMAGE and $DOCKER_IMAGE"
 # shellcheck disable=1091
-source ./SCAP_docker.sh "$VENDOR_TGZ_DOWNLOAD_FILE" "$DOCKER_IMAGE"
+source ./SCAP_docker.sh "$LOCAL_VENDOR_ROOT_DIR/$THIS_DOCKER_VENDOR_IMAGE" "$DOCKER_IMAGE"
 
 print_final_report
 
