@@ -470,7 +470,6 @@ if [[ $DO_HASH_CHECK == 'true' ]]; then
 	docker_256sum_check "$LOCAL_VENDOR_ROOT_DIR/$THIS_DOCKER_VENDOR_IMAGE" "$LOCAL_VENDOR_ROOT_DIR/$THIS_DOCKER_VENDOR_HASH"
 fi
 
-
 # Extracting the layers and then extracting the layers all to one combined directory.
 # Then analyze shared image to vendor core image
 print_v v "About to do security comparison of $LOCAL_VENDOR_ROOT_DIR/$THIS_DOCKER_VENDOR_IMAGE and $DOCKER_IMAGE"
@@ -478,7 +477,6 @@ print_v v "About to do security comparison of $LOCAL_VENDOR_ROOT_DIR/$THIS_DOCKE
 source ./SCAP_docker.sh "$LOCAL_VENDOR_ROOT_DIR/$THIS_DOCKER_VENDOR_IMAGE" "$DOCKER_IMAGE"
 
 print_final_report
-
 
 # tabs instead of spaces in bash scripts for heredoc <<-
 # vim: ts=4 noexpandtab
