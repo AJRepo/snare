@@ -16,15 +16,18 @@ DRY_RUN='false'
 DEBUG='false'
 VERBOSE='false'
 
+
 VENDOR_TGZ_DOWNLOAD_FILE="/tmp/latest_docker_image.tgz"
 
 # Function: usage() print usage.
 function usage() {
 	echo "Usage: $(basename "$0") -p " 2>&1
-	echo '   -d    Debug mode (print more)'
-	echo '   -v    Verbose mode (print more)'
-	echo '   -n    Dry Run (do not download)'
-	echo '   -r    Root docker image to analyze (nvida, ubuntu)'
+	echo '   -c <0|1>    DOCKER_CONTENT_TRUST= (defaults to 1)'
+	echo '   -d          Debug mode (print more)'
+	echo '   -v          Verbose mode (print more)'
+	echo '   -n          Dry Run (do not download)'
+	echo '   -r <name>   Root docker image to analyze (nvida, ubuntu)'
+	echo '   -t <name>   Docker tag to analyze (e.g. focal)'
 	exit 1
 }
 
@@ -57,7 +60,7 @@ function print_final_report() {
 	echo "DOCKER_IMAGE_HASH=$DOCKER_HASH"
 	
 	echo "Report for $DOCKER_IMAGE"
-	echo "Original Source image = ${aIMAGE_SOURCE_URL[$DOCKER_IMAGE]}"
+	#echo "Original Source image = ${aIMAGE_SOURCE_URL[$DOCKER_IMAGE]}"
 	echo "SECURITY RISK LEVEL = $SECURITY_RISK_LEVEL"
 	echo "Security Warnings:"
 	
@@ -137,7 +140,11 @@ function setup_docker_globals() {
 
 	#print_v d " about to lookup aIMAGE_PRODUCT"
 	#set variable this_docker_tag
-	set_docker_param this_docker_tag aIMAGE_TAG "$this_docker_core"
+	if [[ $DOCKER_TAG == "" ]]; then
+		set_docker_param this_docker_tag aIMAGE_TAG "$this_docker_core"
+	else
+		this_docker_tag=$DOCKER_TAG
+	fi
 
 	if [[ $this_docker_tag == 'false' ]]; then
 		echo "Error: Docker tag not set. Used " "${aIMAGE_TAG[@]}" " Error: exiting"
@@ -179,6 +186,7 @@ function docker_256sum_check() {
 	local this_image_filename=$1
 	local this_image_hash_url=$2
 	local this_tmp_hashfile=$3
+	local this_file_to_check=$VENDOR_TGZ_DOWNLOAD_FILE
 	if [[ $this_image_hash_url != "" ]]; then
 		print_v d "Checking Image of $this_image_filename"
 		if [[ $DRY_RUN == 'false' ]]; then
@@ -186,7 +194,7 @@ function docker_256sum_check() {
 		else
 			print_v v "Skipping new download of docker_iamge_hashes"
 		fi
-		if ! grep "$this_image_filename" "$this_tmp_hashfile" | awk '{print $1, "$VENDOR_TGZ_DOWNLOAD_FILE"}' | sha256sum --check --; then
+		if ! grep "$this_image_filename" "$this_tmp_hashfile" | awk -F tf=$this_file_to_check '{print $1, tf}' | sha256sum --check --; then
 			echo "Download of Vendor original source image failed hash check."
 			echo "Failed hash check means also failed security audit. Exiting"
 			exit 1
@@ -195,6 +203,28 @@ function docker_256sum_check() {
 		echo "Couldn't find vendor's source hash checks."
 		SECURITY_RISK_LEVEL=$((SECURITY_RISK_LEVEL + 1))
 		SECURITY_WARNINGS+=("Image not signed by vendor")
+	fi
+}
+
+# Function: download_source_image
+# input $this_uri=$1   remote location of image to download
+# input $dir_prefix=$2 local directory to put image
+function download_source_image() {
+	local this_uri=$1
+	local dir_prefix=$2
+	#######Download Vendor Source Image
+	if [[ $this_uri != "" ]]; then
+		if [[ $DRY_RUN == 'false' ]]; then
+			wget --directory-prefix="$dir_prefix" \
+	             --force-directories \
+	             -N  "$this_uri"
+		else
+			print_v v "Dry Run: Skipping download of $this_uri"
+		fi
+	
+	else
+		echo "Couldn't find vendor's source image file. Exiting."
+		exit 1
 	fi
 }
 
@@ -218,7 +248,6 @@ function docker_creation_date() {
 		echo "Error: Blank image_creation_date"
 		exit 1
 	fi
-
 }
 	
 
@@ -236,9 +265,11 @@ function which_docker_core_image() {
 		exit 1
 	fi
 	
-	for date_dir in $(wget --level=0 -O - "$core_url" | grep folder | sed /.*href=\"/s/// | sed /\\/.*/s///); do
+	for date_dir in $(wget --level=0 -O - "$core_url" | sed -e /current/d | grep folder | sed /.*href=\"/s/// | sed /\\/.*/s///); do
 		local_hmsdate="${date_dir}000000"
+		print_v d "Testing if $local_hmsdate, $date_dir <= $docker_date"
 		if [ "$local_hmsdate" -le "$docker_date" ]; then
+			print_v d "Yes $local_hmsdate <= $docker_date"
 			greatest_date=$date_dir
 		fi
 	done
@@ -256,6 +287,8 @@ function which_docker_core_image() {
 	fi
 }
 
+#####################################################################
+
 #If called without args error out
 if [[ ${#} -eq 0 ]]; then
 	echo "Must be called with argument specifying client"
@@ -263,11 +296,16 @@ if [[ ${#} -eq 0 ]]; then
 	exit 1
 fi
 
+DOCKER_CONTENT_TRUST=1
+DOCKER_TAG=""
 DEBUG='false'
 VERBOSE='false'
-optstring="vndr:"
+optstring="vndr:t:c:"
 while getopts ${optstring} arg; do
 	case ${arg} in
+	c)
+		DOCKER_CONTENT_TRUST="${OPTARG}"
+	;;
 	n)
 		DRY_RUN='true'
 	;;
@@ -279,6 +317,10 @@ while getopts ${optstring} arg; do
 	;;
 	r)
 		DOCKER_ROOT="${OPTARG}"
+	;;
+	t)
+		DOCKER_TAG="${OPTARG}"
+		print_v v "Docker Tag not yet implemented $DOCKER_TAG"
 	;;
 	esac
 done
@@ -292,9 +334,9 @@ setup_docker_globals "$DOCKER_ROOT"
 
 
 #Declare Associative Array Variables for various sources
-declare -A aIMAGE_CORE_DIR
+declare -A aIMAGE_CORE
 declare -A aIMAGE_TAG_DIR
-declare -A aIMAGE_SOURCE_URL
+#declare -A aIMAGE_SOURCE_URL
 declare -A aIMAGE_SOURCE_HASHES
 declare -A aIMAGE_SOURCE_IMAGE_FILE
 aIMAGE_SOURCE_IMAGE_FILE["ubuntu:focal"]="ubuntu-focal-core-cloudimg-amd64-root.tar.gz"
@@ -307,8 +349,8 @@ aIMAGE_SOURCE_HASHES["nvidia:11.0-base"]=""
 # NVIDIA: See https://ngc.nvidia.com/catalog/containers/nvidia:cuda
 # NVIDIA: Uses Ubuntu for their core image. So looking at NVIDIA requires looking
 #         at the base Ubuntu packages and then NVIDIA deb packages.
-aIMAGE_SOURCE_URL["ubuntu:focal"]="https://partner-images.canonical.com/core/focal/current/${aIMAGE_SOURCE_IMAGE_FILE['ubuntu:focal']}"
-aIMAGE_SOURCE_URL["nvidia:11.0-base"]="https://gitlab.com/nvidia/container-images/cuda/blob/master/dist/11.2.2/ubuntu20.04-x86_64/runtime/cudnn8/Dockerfile"
+#aIMAGE_SOURCE_URL["ubuntu:focal"]="https://partner-images.canonical.com/core/focal/current/${aIMAGE_SOURCE_IMAGE_FILE['ubuntu:focal']}"
+#aIMAGE_SOURCE_URL["nvidia:11.0-base"]="https://gitlab.com/nvidia/container-images/cuda/blob/master/dist/11.2.2/ubuntu20.04-x86_64/runtime/cudnn8/Dockerfile"
 
 # NVIDIA: See https://ngc.nvidia.com/catalog/containers/nvidia:cuda
 # NVIDIA: Uses Ubuntu for their core image. So looking at NVIDIA requires looking
@@ -317,18 +359,17 @@ aIMAGE_SOURCE_URL["nvidia:11.0-base"]="https://gitlab.com/nvidia/container-image
 #aIMAGE_SOURCE_DIR["ubuntu:focal"]="https://partner-images.canonical.com/core/focal/"
 #aIMAGE_SOURCE_DIR["nvidia:11.0-base"]="https://gitlab.com/nvidia/container-images/cuda/blob/master/dist/11.2.2/ubuntu20.04-x86_64/runtime/cudnn8/"
 
-aIMAGE_CORE_DIR["ubuntu"]="https://partner-images.canonical.com/core/"
-aIMAGE_CORE_DIR["nvidia"]="https://gitlab.com/nvidia/container-images/cuda/blob/master/dist/11.2.2/ubuntu20.04-x86_64/runtime/"
+aIMAGE_CORE["ubuntu"]="partner-images.canonical.com/core/"
+aIMAGE_CORE["nvidia"]="gitlab.com/nvidia/container-images/cuda/blob/master/dist/11.2.2/ubuntu20.04-x86_64/runtime/"
 
 aIMAGE_TAG_DIR["focal"]="focal/"
 aIMAGE_TAG_DIR["11.0-base"]="cudnn8/"
 
-this_source_url=""
-print_v d " about to run aIMAGE_SOURCE_URL for $DOCKER_IMAGE, $THIS_DOCKER_TAG"
+#this_source_url=""
+#print_v d " about to run aIMAGE_SOURCE_URL for $DOCKER_IMAGE, $THIS_DOCKER_TAG"
 #set variable this_source_url (where we download the source docker image)
-set_docker_param this_source_url aIMAGE_SOURCE_URL "$DOCKER_IMAGE"
-
-print_v d "SOURCE URL= $this_source_url"
+#set_docker_param this_source_url aIMAGE_SOURCE_URL "$DOCKER_IMAGE"
+#print_v d "SOURCE URL= $this_source_url"
 
 
 if [[ $THIS_DOCKER_PRODUCT != "" ]]; then
@@ -340,52 +381,19 @@ fi
 #DOCKER_IMAGE set in setup_arrays
 #DOCKER_IMAGE="$IMAGE_VENDOR_PRODUCT:${IMAGE_TAGS[$i]}"
 
-print_v v "Checking $DOCKER_IMAGE"
-print_v v "Source Image Identified as: ${aIMAGE_SOURCE_IMAGE_FILE[${DOCKER_IMAGE}]}"
-print_v v "Source URL Identified as: ${aIMAGE_SOURCE_URL[${DOCKER_IMAGE}]}"
-
-#######Download Vendor Source Image
-if [[ ${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]} == "Dockerfile" ]]; then
-	echo -n "This docker image doesn't use their own core image. "
-	echo -n "E.g. Nvidia uses a DockerFile that references Ubuntu/UBI/CentOS cores. "
-	echo "Getting DockerFile"
-	DO_HASH_CHECK='false'
-	DOCKERFILE_ONLY='true'
-	if [[ $DRY_RUN == 'false' ]]; then
-		wget -O /tmp/latest_docker_file.dockerfile ${aIMAGE_SOURCE_URL[$DOCKER_IMAGE]}
-	else
-		print_v v "Dry Run: Skipping download of ${aIMAGE_SOURCE_URL[$DOCKER_IMAGE]}"
-	fi
-elif [[ ${aIMAGE_SOURCE_URL[$DOCKER_IMAGE]} != "" ]]; then
-	DOCKERFILE_ONLY='false'
-	DO_HASH_CHECK='true'
-	if [[ $DRY_RUN == 'false' ]]; then
-		wget --directory-prefix="$LOCAL_VENDOR_ROOT_DIR" \
-             --force-directories \
-             -N  ${aIMAGE_SOURCE_URL[$DOCKER_IMAGE]}
-	else
-		print_v v "Dry Run: Skipping download of ${aIMAGE_SOURCE_URL[$DOCKER_IMAGE]}"
-	fi
-
-else
-	echo "Couldn't find vendor's source image file. Exiting."
-	exit 1
-fi
-
-if [[ $DO_HASH_CHECK == 'true' ]]; then
-	#Download vendor hash file and check downloaded file image passes hash checks
-	docker_256sum_check ${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]} ${aIMAGE_SOURCE_HASHES[$DOCKER_IMAGE]} /tmp/docker_image_hashes.txt
-fi
-
 #Download docker source image if it passes docker signing
 print_v v "About to download docker image using 'sudo docker pull $DOCKER_IMAGE'"
-if ! sudo DOCKER_CONTENT_TRUST=1 docker pull "$DOCKER_IMAGE"; then
+if [[ $DOCKER_CONTENT_TRUST != 1 ]]; then
 	SECURITY_RISK_LEVEL=$((SECURITY_RISK_LEVEL + 1))
 	SECURITY_WARNINGS+=("Image not signed by notary.docker.io")
-	if ! sudo docker pull "$DOCKER_IMAGE"; then
-		echo "Pulling $DOCKER_IMAGE failed: exiting"
-		exit 1
+fi
+
+if ! sudo DOCKER_CONTENT_TRUST="$DOCKER_CONTENT_TRUST" docker pull "$DOCKER_IMAGE"; then
+	echo "Unable to download Docker Image. Exiting"
+	if [[ $DOCKER_CONTENT_TRUST == 1 ]]; then
+		echo "You used DOCKER_CONTENT_TRUST=1, try '-c 0' "
 	fi
+	exit 1
 fi
 
 
@@ -402,23 +410,56 @@ IMAGE_CREATION_DATE=""
 docker_creation_date "$DOCKER_IMAGE" IMAGE_CREATION_DATE
 print_v v "Docker Creation Date = $IMAGE_CREATION_DATE"
 
-DOCKER_LOCAL_IMAGE_DIRECTORY="/srv/docker.$DOCKER_IMAGE.$IMAGE_CREATION_DATE"
+DOCKER_LOCAL_IMAGE_DIRECTORY="/srv/dockercheck/docker.$DOCKER_IMAGE.$IMAGE_CREATION_DATE"
 if [ -d "$DOCKER_LOCAL_IMAGE_DIRECTORY" ]; then
 	print_v v "Docker local image already saved"
 else
 	print_v v "Making Directory $DOCKER_LOCAL_IMAGE_DIRECTORY"
-	mkdir "$DOCKER_LOCAL_IMAGE_DIRECTORY"
+	mkdir "$DOCKER_LOCAL_IMAGE_DIRECTORY" || (echo "Error Can't make dir $DOCKER_LOCAL_IMAGE_DIRECTORY"; exit 1)
 fi
 
 THIS_DOCKER_VENDOR_IMAGE=""
-which_docker_core_image "${aIMAGE_CORE_DIR[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}" "$IMAGE_CREATION_DATE" "${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}" THIS_DOCKER_VENDOR_IMAGE
+which_docker_core_image "https://${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}" "$IMAGE_CREATION_DATE" "${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}" THIS_DOCKER_VENDOR_IMAGE
 
 print_v d "DOCKER_IMAGE=$DOCKER_IMAGE"
 print_v d "THIS_DOCKER_TAG=$THIS_DOCKER_TAG"
-print_v d "THIS_CORE_DIR=${aIMAGE_CORE_DIR[$THIS_DOCKER_CORE]}"
+print_v d "THIS_CORE_DIR=${aIMAGE_CORE[$THIS_DOCKER_CORE]}"
 print_v d "THIS_TAG_DIR=${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}"
 print_v d "IMAGE_CREATION_DATE=$IMAGE_CREATION_DATE"
 print_v d "THIS_DOCKER_VENDOR_IMAGE=$THIS_DOCKER_VENDOR_IMAGE"
+
+
+print_v v "Checking $DOCKER_IMAGE"
+print_v v "Source Image Identified as: ${aIMAGE_SOURCE_IMAGE_FILE[${DOCKER_IMAGE}]}"
+#print_v v "Source URL Identified as: ${aIMAGE_SOURCE_URL[${DOCKER_IMAGE}]}"
+
+echo "TESTING TO HERE" 
+exit 
+
+if [[ ${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]} == "Dockerfile" ]]; then
+	echo -n "This docker image doesn't use their own core image. "
+	echo -n "E.g. Nvidia uses a DockerFile that references Ubuntu/UBI/CentOS cores. "
+	echo "Getting DockerFile"
+	DO_HASH_CHECK='false'
+	DOCKERFILE_ONLY='true'
+	if [[ $DRY_RUN == 'false' ]]; then
+		wget -O /tmp/latest_docker_file.dockerfile "$this_uri"
+	else
+		print_v v "Dry Run: Skipping download of $this_uri"
+	fi
+else 
+	DOCKERFILE_ONLY='false'
+	DO_HASH_CHECK='true'
+	download_source_image ${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]} $LOCAL_VENDOR_ROOT_DIR
+fi
+
+#will be downloaded to /local.path/remote.path/filename
+
+
+if [[ $DO_HASH_CHECK == 'true' ]]; then
+	#Download vendor hash file and check downloaded file image passes hash checks
+	docker_256sum_check ${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]} ${aIMAGE_SOURCE_HASHES[$DOCKER_IMAGE]} /tmp/docker_image_hashes.txt "$LOCAL_VENDOR_ROOT_DIR/${aIMAGE_CORE[$DOCKER_CORE]}/${aIMAGE_TAG_DIR[$DOCKER_TAG]}/date/filename"
+fi
 
 
 # Extracting the layers and then extracting the layers all to one combined directory.
