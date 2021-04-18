@@ -17,6 +17,9 @@ DEBUG='false'
 VERBOSE='false'
 
 
+#################################################################
+#Begin Functions
+#################################################################
 # Function: print_usage() print usage.
 function print_usage() {
 	echo "Usage: $(basename "$0") -p " 2>&1
@@ -55,24 +58,74 @@ function print_v() {
 
 
 #Function: print_final_report() Prints final security risk report
+# input: global $DOCKER_HASH
+# input: global $DOCKER_IMAGE
+# input: global $SECURITY_RISK_LEVEL
+# input: global $SECURITY_WARNINGS[]
 function print_final_report() {
-	echo "DOCKER_IMAGE_HASH=$DOCKER_HASH"
 	
 	echo "Report for $DOCKER_IMAGE"
+	echo "   DOCKER_IMAGE_HASH=$DOCKER_HASH"
 	#echo "Original Source image = ${aIMAGE_SOURCE_URL[$DOCKER_IMAGE]}"
-	echo "SECURITY RISK LEVEL = $SECURITY_RISK_LEVEL"
-	echo "Security Warnings:"
+	echo "   SECURITY RISK LEVEL = $SECURITY_RISK_LEVEL"
+	echo "   Security Warnings:"
 	
 	for SECURITY_WARNING in "${SECURITY_WARNINGS[@]}"
 	do
-		echo "* $SECURITY_WARNING"
+		echo "      * $SECURITY_WARNING"
 	done
 }
 
+# Function extract_docker_image() Extracts and unwinds the docker tar images
+# Creates a tmp file and deletes it in /tmp/docker_save_tmp.tar
+# input: $this_docker_image=$1 string   the image:tag of the docker image to extract
+# input: $this_tar_dir=$2      string   the path to where to put the extraction
+function extract_docker_image() {
+	local this_docker_image="$1"
+	local this_tar_dir="$2"
+	if declare -F print_v > /dev/null; then
+		print_v d "sudo docker save $this_docker_image"
+	else
+echo "Verbose: sudo docker save $this_docker_image"
+	fi
+	#shellcheck disable=SC2024
+	sudo docker save "$this_docker_image" > /tmp/docker_save_tmp.tar
+
+	if ! tar --directory="$this_tar_dir" -xf /tmp/docker_save_tmp.tar; then
+		echo "Error: unable to extract $this_tar_dir exiting"
+		exit 1
+	fi
+
+	if ! rm /tmp/docker_save_tmp.tar; then
+		echo "Error: unable to delete temp file /tmp/docker_save_tmp.tar"
+	fi
+
+	mkdir -p "$this_tar_dir/combined/"
+	find "$this_tar_dir" -name layer.tar \
+		-exec tar --directory "$this_tar_dir/combined/" -xf {} \; 
+
+	if [ ! -d "$this_tar_dir/combined/etc" ]; then
+		echo "Error: Extraction failed. Exiting."
+		exit 1
+	fi
+}
+
+# Function create_tmp_dir() Creates a tmp dir if it doesn't exist and warns else
+# input: this_location=$1
+function create_tmp_dir() {
+	this_location=$1
+	if [ ! -d "$this_location" ]; then
+		mkdir "$this_location"
+	else
+		echo "$this_location already exits, cowardly stopping"
+		exit 1
+	fi
+}
+
 #Function: set_docker_param(): set the param based on docker root
-# input: $1 return variable
-# input: $2 associative array with valid parameters
-# input: $3 the key parameter to look up in $2 variable
+# input: return_val=$1      return variable
+# input: aa_valid_params=$2 return associative array with valid parameters 
+# input: param_to_lookup=$3 the key parameter to look up in $2 variable
 function set_docker_param() {
 	local known_docker_param='false'
 	local -n return_val=$1
@@ -469,7 +522,6 @@ else
 	fi
 fi
 
-
 if [[ $DO_HASH_CHECK == 'true' ]]; then
 	#check downloaded file image passes hash checks
 	docker_256sum_check "$LOCAL_VENDOR_ROOT_DIR/$THIS_DOCKER_VENDOR_IMAGE" "$LOCAL_VENDOR_ROOT_DIR/$THIS_DOCKER_VENDOR_HASH"
@@ -478,8 +530,29 @@ fi
 # Extracting the layers and then extracting the layers all to one combined directory.
 # Then analyze shared image to vendor core image
 print_v v "About to do security comparison of $LOCAL_VENDOR_ROOT_DIR/$THIS_DOCKER_VENDOR_IMAGE and $DOCKER_IMAGE"
-# shellcheck disable=1091
-source ./SCAP_docker.sh "$LOCAL_VENDOR_ROOT_DIR/$THIS_DOCKER_VENDOR_IMAGE" "$DOCKER_IMAGE"
+
+##Extract Tmp Dirs for security analysis
+DATETIME=$(date +%Y%m%d.%H%M)
+DOCKER_DELIVERED_TAR_DIR="/tmp/dockerd_img_extract.$DATETIME"
+DOCKER_VENDOR_TAR_DIR="/tmp/dockerv_img_extract.$DATETIME"
+
+create_tmp_dir "$DOCKER_DELIVERED_TAR_DIR"
+create_tmp_dir "$DOCKER_VENDOR_TAR_DIR"
+
+CAN_DO_DIFF='true'
+if ! extract_docker_image "$LOCAL_VENDOR_ROOT_DIR/$THIS_DOCKER_VENDOR_IMAGE" "$DOCKER_DELIVERED_TAR_DIR"; then
+	CAN_DO_DIFF='false'
+fi
+
+if ! tar -xf "$DOCKER_IMAGE" --directory "$DOCKER_VENDOR_TAR_DIR"; then
+	CAN_DO_DIFF='false'
+fi
+
+
+if [[ $CAN_DO_DIFF == 'true' ]]; then
+	# shellcheck disable=1091
+	source ./SCAP_docker.sh "$DOCKER_DELIVERED_TAR_DIR" "$DOCKER_VENDOR_TAR_DIR"
+fi
 
 print_final_report
 
