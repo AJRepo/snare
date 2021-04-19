@@ -22,7 +22,7 @@ VERBOSE='false'
 #################################################################
 # Function: print_usage() print usage.
 function print_usage() {
-	echo "Usage: $(basename "$0") -p " 2>&1
+	echo "Usage: $(basename "$0")  " 2>&1
 	echo '   -c <0|1>    DOCKER_CONTENT_TRUST= (defaults to 1)'
 	echo '   -d          Debug mode (print more)'
 	echo '   -h          Help'
