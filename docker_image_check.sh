@@ -387,37 +387,27 @@ setup_docker_globals "$DOCKER_ROOT"
 
 
 #Declare Associative Array Variables for various sources
-declare -A aIMAGE_CORE
-declare -A aIMAGE_TAG_DIR
-#declare -A aIMAGE_SOURCE_URL
 declare -A aIMAGE_SOURCE_IMAGE_FILE
 aIMAGE_SOURCE_IMAGE_FILE["ubuntu:focal"]="ubuntu-focal-core-cloudimg-amd64-root.tar.gz"
 aIMAGE_SOURCE_IMAGE_FILE["nvidia:11.0-base"]="Dockerfile"
+aIMAGE_SOURCE_IMAGE_FILE["gazebo:libgazebo11-focal"]="Dockerfile"
 
-#declare -A aIMAGE_SOURCE_HASHES
-#aIMAGE_SOURCE_HASHES["ubuntu:focal"]="https://partner-images.canonical.com/core/focal/current/SHA256SUMS"
-##NVIDIA Doesn't have them
-#aIMAGE_SOURCE_HASHES["nvidia:11.0-base"]=""
 
-# NVIDIA: See https://ngc.nvidia.com/catalog/containers/nvidia:cuda
-# NVIDIA: Uses Ubuntu for their core image. So looking at NVIDIA requires looking
-#         at the base Ubuntu packages and then NVIDIA deb packages.
-#aIMAGE_SOURCE_URL["ubuntu:focal"]="https://partner-images.canonical.com/core/focal/current/${aIMAGE_SOURCE_IMAGE_FILE['ubuntu:focal']}"
-#aIMAGE_SOURCE_URL["nvidia:11.0-base"]="https://gitlab.com/nvidia/container-images/cuda/blob/master/dist/11.2.2/ubuntu20.04-x86_64/runtime/cudnn8/Dockerfile"
-
-# NVIDIA: See https://ngc.nvidia.com/catalog/containers/nvidia:cuda
-# NVIDIA: Uses Ubuntu for their core image. So looking at NVIDIA requires looking
-#         at the base Ubuntu packages and then NVIDIA deb packages.
-#declare -A aIMAGE_SOURCE_DIR
-#aIMAGE_SOURCE_DIR["ubuntu:focal"]="https://partner-images.canonical.com/core/focal/"
-#aIMAGE_SOURCE_DIR["nvidia:11.0-base"]="https://gitlab.com/nvidia/container-images/cuda/blob/master/dist/11.2.2/ubuntu20.04-x86_64/runtime/cudnn8/"
-
+declare -A aIMAGE_CORE
 aIMAGE_CORE["ubuntu"]="partner-images.canonical.com/core/"
 aIMAGE_CORE["nvidia"]="gitlab.com/nvidia/container-images/cuda/blob/master/dist/11.2.2/ubuntu20.04-x86_64/runtime/"
+aIMAGE_CORE["gazebo"]="https://github.com/docker-library/repo-info/tree/master/repos/gazebo"
 
+declare -A aIMAGE_TAG_DIR
 aIMAGE_TAG_DIR["focal"]="focal/"
 aIMAGE_TAG_DIR["11.0-base"]="cudnn8/"
+aIMAGE_TAG_DIR["libgazebo11-focal"]="libgazebo11-focal"
 
+#gazebo:libgazebo11-focal
+declare -A aIMAGE_BACKING_SOURCE
+aIMAGE_BACKING_SOURCE["ubuntu:focal"]="ubuntu:focal"
+aIMAGE_BACKING_SOURCE["nvidia:11.0-base"]="ubuntu:focal"
+aIMAGE_BACKING_SOURCE["gazebo:libgazebo11-focal"]="ubuntu:focal"
 #this_source_url=""
 #print_v d " about to run aIMAGE_SOURCE_URL for $DOCKER_IMAGE, $THIS_DOCKER_TAG"
 #set variable this_source_url (where we download the source docker image)
@@ -489,6 +479,7 @@ print_v d "THIS_CORE_DIR=${aIMAGE_CORE[$THIS_DOCKER_CORE]}"
 print_v d "THIS_TAG_DIR=${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}"
 print_v d "IMAGE_CREATION_DATE=$IMAGE_CREATION_DATE"
 print_v d "THIS_DOCKER_VENDOR_IMAGE=$THIS_DOCKER_VENDOR_IMAGE"
+print_v d "aIMAGE_BACKING_SOURCE=${aIMAGE_BACKING_SOURCE[$DOCKER_IMAGE]}"
 
 
 print_v v "Checking $DOCKER_IMAGE"
