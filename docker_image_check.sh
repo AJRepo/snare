@@ -384,13 +384,23 @@ print_v d "PWD=$PWD"
 setup_docker_globals "$DOCKER_ROOT"
 
 #which image to analyze
+#Notes; https://github.com/docker-library/repo-info/blob/master/repos/ubuntu/local/20.04.md
 
 
 #Declare Associative Array Variables for various sources
+#Notes: 
+# Nvidia -> Ubuntu
+# gzserver -> Ubuntu
+# libgazebo11 -> gzserver11 -> Ubuntu
 declare -A aIMAGE_SOURCE_IMAGE_FILE
 aIMAGE_SOURCE_IMAGE_FILE["ubuntu:focal"]="ubuntu-focal-core-cloudimg-amd64-root.tar.gz"
-aIMAGE_SOURCE_IMAGE_FILE["nvidia:11.0-base"]="Dockerfile"
-aIMAGE_SOURCE_IMAGE_FILE["gazebo:libgazebo11-focal"]="Dockerfile"
+#aIMAGE_SOURCE_IMAGE_FILE["nvidia:11.0-base"]="https://gitlab.com/nvidia/container-images/cuda/blob/master/dist/11.2.2/ubuntu20.04-x86_64/runtime/cudnn8/Dockerfile"
+aIMAGE_SOURCE_IMAGE_FILE["nvidia:11.0-base"]="https://gitlab.com/nvidia/container-images/cuda/-/raw/master/dist/11.2.2/ubuntu20.04-x86_64/base/Dockerfile"
+#aIMAGE_SOURCE_IMAGE_FILE["gazebo:gzserver11"]="https://github.com/osrf/docker_images/blob/9cff18454e36bdaa182931c86a8c64205e51a2de/gazebo/11/ubuntu/focal/gzserver11/Dockerfile"
+aIMAGE_SOURCE_IMAGE_FILE["gazebo:gzserver11"]="https://raw.githubusercontent.com/osrf/docker_images/master/gazebo/11/ubuntu/focal/gzserver11/Dockerfile"
+aIMAGE_SOURCE_IMAGE_FILE["gazebo:gzserver11-focal"]="https://raw.githubusercontent.com/osrf/docker_images/master/gazebo/11/ubuntu/focal/gzserver11/Dockerfile"
+#aIMAGE_SOURCE_IMAGE_FILE["gazebo:libgazebo11-focal"]="https://github.com/osrf/docker_images/blob/9cff18454e36bdaa182931c86a8c64205e51a2de/gazebo/11/ubuntu/focal/libgazebo11/Dockerfile"
+aIMAGE_SOURCE_IMAGE_FILE["gazebo:libgazebo11-focal"]="https://raw.githubusercontent.com/osrf/docker_images/9cff18454e36bdaa182931c86a8c64205e51a2de/gazebo/11/ubuntu/focal/libgazebo11/Dockerfile"
 
 
 declare -A aIMAGE_CORE
@@ -403,6 +413,9 @@ aIMAGE_TAG_DIR["focal"]="focal/"
 aIMAGE_TAG_DIR["11.0-base"]="cudnn8/"
 aIMAGE_TAG_DIR["libgazebo11-focal"]="libgazebo11-focal"
 
+# DockerCore: https://hub.docker.com/_/gazebo
+# DockerCore: https://registry.hub.docker.com/r/nvidia/cuda
+# DockerCore: https://registry.hub.docker.com/_/ubuntu
 #gazebo:libgazebo11-focal
 declare -A aIMAGE_BACKING_SOURCE
 aIMAGE_BACKING_SOURCE["ubuntu:focal"]="ubuntu:focal"
@@ -487,7 +500,7 @@ print_v v "Source Image Identified as: ${aIMAGE_SOURCE_IMAGE_FILE[${DOCKER_IMAGE
 #print_v v "Source URL Identified as: ${aIMAGE_SOURCE_URL[${DOCKER_IMAGE}]}"
 
 
-if [[ ${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]} == "Dockerfile" ]]; then
+if [[ ${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]} =~ "Dockerfile" ]]; then
 	echo -n "This docker image doesn't use their own core image. "
 	echo -n "E.g. Nvidia uses a DockerFile that references Ubuntu/UBI/CentOS cores. "
 	echo "Getting DockerFile"
