@@ -5,7 +5,10 @@
 # Copyright (C) AJRepo
 
 #Supported TAGS
-#SUPPORTED_TAGS="https://gitlab.com/nvidia/container-images/cuda/blob/master/doc/supported-tags.md"
+# Not all Docker Images support this. So can't use.  
+#SUPPORTED_TAGS="https://registry.hub.docker.com/v1/repositories/$IMAGE/tags
+#                https://hub.docker.com/r/nvidia/cuda/tags?page=1&ordering=last_updated
+# Nvidia: 11.2.2-cudnn8-runtime-ubuntu20.04, 11.2.2-cudnn8-runtime-ubuntu20.04
 
 SECURITY_RISK_LEVEL=0
 SECURITY_WARNINGS=()
@@ -389,13 +392,15 @@ setup_docker_globals "$DOCKER_ROOT"
 
 #Declare Associative Array Variables for various sources
 #Notes: 
-# Nvidia -> Ubuntu
+# Nvidia-base -> Ubuntu
+# Nvidia-runtime-> nvidia-base -> Ubuntu
 # gzserver -> Ubuntu
 # libgazebo11 -> gzserver11 -> Ubuntu
 declare -A aIMAGE_SOURCE_IMAGE_FILE
 aIMAGE_SOURCE_IMAGE_FILE["ubuntu:focal"]="ubuntu-focal-core-cloudimg-amd64-root.tar.gz"
 #aIMAGE_SOURCE_IMAGE_FILE["nvidia:11.0-base"]="https://gitlab.com/nvidia/container-images/cuda/blob/master/dist/11.2.2/ubuntu20.04-x86_64/runtime/cudnn8/Dockerfile"
 aIMAGE_SOURCE_IMAGE_FILE["nvidia:11.0-base"]="https://gitlab.com/nvidia/container-images/cuda/-/raw/master/dist/11.2.2/ubuntu20.04-x86_64/base/Dockerfile"
+aIMAGE_SOURCE_IMAGE_FILE["nvidia:11.2.2-runtime"]="https://gitlab.com/nvidia/container-images/cuda/-/raw/master/dist/11.2.2/ubuntu20.04-x86_64/runtime/Dockerfile"
 #aIMAGE_SOURCE_IMAGE_FILE["gazebo:gzserver11"]="https://github.com/osrf/docker_images/blob/9cff18454e36bdaa182931c86a8c64205e51a2de/gazebo/11/ubuntu/focal/gzserver11/Dockerfile"
 aIMAGE_SOURCE_IMAGE_FILE["gazebo:gzserver11"]="https://raw.githubusercontent.com/osrf/docker_images/master/gazebo/11/ubuntu/focal/gzserver11/Dockerfile"
 aIMAGE_SOURCE_IMAGE_FILE["gazebo:gzserver11-focal"]="https://raw.githubusercontent.com/osrf/docker_images/master/gazebo/11/ubuntu/focal/gzserver11/Dockerfile"
