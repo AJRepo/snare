@@ -89,10 +89,11 @@ function extract_docker_image() {
 	if declare -F print_v > /dev/null; then
 		print_v d "sudo docker save $this_docker_image"
 	else
-echo "Verbose: sudo docker save $this_docker_image"
+		echo "Verbose: sudo docker save $this_docker_image"
 	fi
 	#shellcheck disable=SC2024
-	sudo docker save "$this_docker_image" > /tmp/docker_save_tmp.tar
+	print_v d "about to sudo docker save $this_docker_image > /tmp/docker_save_tmp.tar"
+	sudo docker save "$this_docker_image" -o /tmp/docker_save_tmp.tar
 
 	if ! tar --directory="$this_tar_dir" -xf /tmp/docker_save_tmp.tar; then
 		echo "Error: unable to extract $this_tar_dir exiting"
@@ -548,13 +549,19 @@ DOCKER_VENDOR_TAR_DIR="/tmp/dockerv_img_extract.$DATETIME"
 create_tmp_dir "$DOCKER_DELIVERED_TAR_DIR"
 create_tmp_dir "$DOCKER_VENDOR_TAR_DIR"
 
+print_v d "Created tmp dirs ok"
+
 CAN_DO_DIFF='true'
 if ! extract_docker_image "$LOCAL_VENDOR_ROOT_DIR/$THIS_DOCKER_VENDOR_IMAGE" "$DOCKER_DELIVERED_TAR_DIR"; then
 	CAN_DO_DIFF='false'
+	print_v d "Cannot do diff as extract_docker_image to $DOCKER_DELIVERED_TAR_DIR failed"
+else
+	print_v d "Extract_docker_image to $DOCKER_DELIVERED_TAR_DIR ok"
 fi
 
-if ! tar -xf "$DOCKER_IMAGE" --directory "$DOCKER_VENDOR_TAR_DIR"; then
+if ! tar -zxf "$DOCKER_IMAGE" --directory "$DOCKER_VENDOR_TAR_DIR"; then
 	CAN_DO_DIFF='false'
+	print_v d "Cannot do diff as tar extraction of $DOCKER_VENDOR_TAR_DIR failed"
 fi
 
 
