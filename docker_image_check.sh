@@ -86,22 +86,22 @@ function print_final_report() {
 function extract_docker_image() {
 	local this_docker_image="$1"
 	local this_tar_dir="$2"
-	if declare -F print_v > /dev/null; then
-		print_v d "sudo docker save $this_docker_image"
-	else
-		echo "Verbose: sudo docker save $this_docker_image"
-	fi
+
+	print_v d "sudo docker save $this_docker_image"
 	#shellcheck disable=SC2024
 	print_v d "about to sudo docker save $this_docker_image > /tmp/docker_save_tmp.tar"
 	sudo docker save "$this_docker_image" -o /tmp/docker_save_tmp.tar
+
+	# in /tmp/ default is read only by creator
+	sudo chmod a+r /tmp/docker_save_tmp.tar
 
 	if ! tar --directory="$this_tar_dir" -xf /tmp/docker_save_tmp.tar; then
 		echo "Error: unable to extract $this_tar_dir exiting"
 		exit 1
 	fi
 
-	if ! rm /tmp/docker_save_tmp.tar; then
-		echo "Error: unable to delete temp file /tmp/docker_save_tmp.tar"
+	if ! sudo rm /tmp/docker_save_tmp.tar; then
+		print_v w "Unable to delete temp file /tmp/docker_save_tmp.tar. Continuing."
 	fi
 
 	mkdir -p "$this_tar_dir/combined/"
@@ -109,7 +109,7 @@ function extract_docker_image() {
 		-exec tar --directory "$this_tar_dir/combined/" -xf {} \; 
 
 	if [ ! -d "$this_tar_dir/combined/etc" ]; then
-		echo "Error: Extraction failed. Exiting."
+		print_v e "Error: Extraction failed. Exiting."
 		exit 1
 	fi
 }
@@ -552,16 +552,16 @@ create_tmp_dir "$DOCKER_VENDOR_TAR_DIR"
 print_v d "Created tmp dirs ok"
 
 CAN_DO_DIFF='true'
-if ! extract_docker_image "$LOCAL_VENDOR_ROOT_DIR/$THIS_DOCKER_VENDOR_IMAGE" "$DOCKER_DELIVERED_TAR_DIR"; then
+if ! extract_docker_image "$DOCKER_IMAGE" "$DOCKER_DELIVERED_TAR_DIR"; then
 	CAN_DO_DIFF='false'
 	print_v d "Cannot do diff as extract_docker_image to $DOCKER_DELIVERED_TAR_DIR failed"
 else
 	print_v d "Extract_docker_image to $DOCKER_DELIVERED_TAR_DIR ok"
 fi
 
-if ! tar -zxf "$DOCKER_IMAGE" --directory "$DOCKER_VENDOR_TAR_DIR"; then
+if ! tar -zxf "$LOCAL_VENDOR_ROOT_DIR/$THIS_DOCKER_VENDOR_IMAGE" --directory "$DOCKER_VENDOR_TAR_DIR"; then
 	CAN_DO_DIFF='false'
-	print_v d "Cannot do diff as tar extraction of $DOCKER_VENDOR_TAR_DIR failed"
+	print_v d "Cannot do diff as tar extraction to $DOCKER_VENDOR_TAR_DIR failed"
 fi
 
 
