@@ -566,8 +566,9 @@ fi
 
 
 if [[ $CAN_DO_DIFF == 'true' ]]; then
+	print_v d "About to run ./tests.d/SCAP_docker.sh $DOCKER_DELIVERED_TAR_DIR $DOCKER_VENDOR_TAR_DIR"
 	# shellcheck disable=1091
-	source ./SCAP_docker.sh "$DOCKER_DELIVERED_TAR_DIR" "$DOCKER_VENDOR_TAR_DIR"
+	source ./tests.d/SCAP_docker.sh "$DOCKER_DELIVERED_TAR_DIR" "$DOCKER_VENDOR_TAR_DIR"
 fi
 
 print_final_report
