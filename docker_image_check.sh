@@ -310,8 +310,8 @@ function which_docker_core_image() {
 	local core_url=$1
 	local docker_date=$2
 	local this_source_image_file=$3
-	#local -n this_docker_vendor_image=$4
 	local -n greatest_date=$4
+	local -n local_file_archive=$5
 	local local_hmsdate=""
 	if [[ $1 = "" ]]; then
 		"Error in getting core_url, exiting"
@@ -322,7 +322,7 @@ function which_docker_core_image() {
 		local_hmsdate="${date_dir}000000"
 		print_v d "Testing if $local_hmsdate, $date_dir <= $docker_date"
 		if [ "$local_hmsdate" -le "$docker_date" ]; then
-			print_v d "Yes $local_hmsdate <= $docker_date"
+			print_v d "Yes Local $local_hmsdate <= Image $docker_date"
 			greatest_date=$date_dir
 		fi
 	done
@@ -330,8 +330,19 @@ function which_docker_core_image() {
 	if [[ $greatest_date != "" ]]; then
 		this_docker_vendor_image="$core_url/$greatest_date/$this_source_image_file"
 	else
-		echo "Can't get core image. Exiting"
-		exit 1
+		local_file_archive="$LOCAL_VENDOR_ROOT_DIR/${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}/$docker_date/${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}"
+		echo "The dates at $core_url do not match or are greater than the creation date of the docker image $docker_date ."
+		echo "Thus, we can't get a core image online. "
+		echo "Checking to see if there is a local pre-downloaded versions with SHA256SUM. In $LOCAL_VENDOR_ROOT_DIR "
+        echo "$local_file_archive"
+		if [[ -x "$LOCAL_VENDOR_ROOT_DIR/${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}/$docker_date/${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}" ]] ; then
+			echo "Use: $local_file_archive"
+			greatest_date="$docker_date"
+			return 0
+		else 
+			echo "Can't find: $local_file_archive . Exiting. "
+			exit 1
+		fi
 	fi
 
 	if [[ $this_docker_vendor_image == "" ]]; then
@@ -340,7 +351,7 @@ function which_docker_core_image() {
 	fi
 }
 
-#####################################################################
+########### MAIN ##########################################################
 
 #If called without args error out
 if [[ ${#} -eq 0 ]]; then
@@ -349,6 +360,7 @@ if [[ ${#} -eq 0 ]]; then
 	exit 1
 fi
 
+LOCAL_ONLY=0
 DOCKER_CONTENT_TRUST=1
 DOCKER_TAG=""
 DEBUG='false'
@@ -480,12 +492,17 @@ else
 fi
 
 THIS_DOCKER_VENDOR_IMAGE=""
-which_docker_core_image "https://${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}" "$IMAGE_CREATION_DATE" "${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}" THIS_DOCKER_VENDOR_DATE
+which_docker_core_image "https://${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}" "$IMAGE_CREATION_DATE" "${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}" THIS_DOCKER_VENDOR_DATE LOCAL_ONLY
 
 if [[ $THIS_DOCKER_VENDOR_DATE == "" ]]; then
 	echo "Error: No vendor date"
 	exit 1
 fi
+
+if [[ "$LOCAL_ONLY" != "" ]]; then
+	LOCAL_ONLY="true"
+fi
+
 THIS_DOCKER_VENDOR_IMAGE="${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}/$THIS_DOCKER_VENDOR_DATE/${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}"
 THIS_DOCKER_VENDOR_HASH="${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}/$THIS_DOCKER_VENDOR_DATE/SHA256SUMS"
 THIS_DOCKER_VENDOR_IMAGE_URL="https://$THIS_DOCKER_VENDOR_IMAGE"
@@ -499,6 +516,7 @@ print_v d "THIS_TAG_DIR=${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}"
 print_v d "IMAGE_CREATION_DATE=$IMAGE_CREATION_DATE"
 print_v d "THIS_DOCKER_VENDOR_IMAGE=$THIS_DOCKER_VENDOR_IMAGE"
 print_v d "aIMAGE_BACKING_SOURCE=${aIMAGE_BACKING_SOURCE[$DOCKER_IMAGE]}"
+print_v d "LOCAL_ONLY=$LOCAL_ONLY"
 
 
 print_v v "Checking $DOCKER_IMAGE"
@@ -517,6 +535,8 @@ if [[ ${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]} =~ "Dockerfile" ]]; then
 	else
 		print_v v "Dry Run: Skipping download of $this_uri"
 	fi
+elif [[ $LOCAL_ONLY == "true" ]]; then
+	echo "No Online image, falling back to saved version"
 else 
 	DOCKERFILE_ONLY='false'
 	print_v v "About to download $THIS_DOCKER_VENDOR_IMAGE_URL"
