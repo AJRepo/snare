@@ -14,6 +14,7 @@ SECURITY_RISK_LEVEL=0
 SECURITY_WARNINGS=()
 
 LOCAL_VENDOR_ROOT_DIR="/srv/dockercheck/"
+LOCAL_CACHE_FILE=""
 
 DRY_RUN='false'
 DEBUG='false'
@@ -31,6 +32,7 @@ function print_usage() {
 	echo '   -h          Help'
 	echo '   -v          Verbose mode (print more)'
 	echo '   -n          Dry Run (do not download)'
+	echo '	 -l          Local saved archive of core vendor image instead of wget'
 	echo '   -r <name>   Root docker image to analyze (nvida, ubuntu)'
 	echo '   -t <name>   Docker tag to analyze (e.g. focal)'
 	exit 1
@@ -38,25 +40,25 @@ function print_usage() {
 
 #Function print_v
 function print_v() {
-   local level=$1
+	local level=$1
 
-   case $level in
-      v) # Verbose
-      [[ "$VERBOSE" == 'true' ]] && echo -e "[VER] ${*:2}"
-      ;;
-      d) # Debug
-      [[ "$DEBUG" == 'true' ]] && echo -e "[DEB] ${*:2}"
-      ;;
-      e) # Error
-      echo -e "[ERR] ${*:2}"
-      ;;
-      w) # Warning
-      echo -e "[WAR] ${*:2}"
-      ;;
-      *) # Any other level
-      echo -e "[INF] ${*:2}"
-      ;;
-   esac
+	case $level in
+		v) # Verbose
+		[[ "$VERBOSE" == 'true' ]] && echo -e "[VER] ${*:2}"
+		;;
+		d) # Debug
+		[[ "$DEBUG" == 'true' ]] && echo -e "[DEB] ${*:2}"
+		;;
+		e) # Error
+		echo -e "[ERR] ${*:2}"
+		;;
+		w) # Warning
+		echo -e "[WAR] ${*:2}"
+		;;
+		*) # Any other level
+		echo -e "[INF] ${*:2}"
+		;;
+	esac
 }
 
 
@@ -329,21 +331,29 @@ function which_docker_core_image() {
 		fi
 	done
 
+    #Look for online version at $greatest_date
 	if [[ $greatest_date != "" ]]; then
 		this_docker_vendor_image="$core_url/$greatest_date/$this_source_image_file"
 		print_v d "Greatest Date Found = $greatest_date"
+		print_v d "Checking to see if there is a local pre-downloaded version in $LOCAL_VENDOR_ROOT_DIR "
+		if [[ -r "$LOCAL_VENDOR_ROOT_DIR/${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}/$greatest_date/${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}" ]] ; then
+			print_v d "Found local archive"
+			local_file_archive="$LOCAL_VENDOR_ROOT_DIR/${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}/$greatest_date/${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}"
+		else
+			print_v d "Did not find local archive in $LOCAL_VENDOR_ROOT_DIR/${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}/$greatest_date/${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}"
+		fi
 	else
-		local_file_archive="$LOCAL_VENDOR_ROOT_DIR/${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}/$docker_date/${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}"
-		echo "The dates at $core_url do not match or are greater than the creation date of the docker image $docker_date ."
-		echo "Thus, we can't get a core image online. "
-		echo "Checking to see if there is a local pre-downloaded versions with SHA256SUM. In $LOCAL_VENDOR_ROOT_DIR "
-        echo "$local_file_archive"
-		if [[ -x "$LOCAL_VENDOR_ROOT_DIR/${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}/$docker_date/${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}" ]] ; then
-			echo "Use: $local_file_archive"
+		#Else look for local version at $docker_date (not $greatest_date)
+		print_v v "The dates at $core_url do not match or are greater than the creation date of the docker image $docker_date ."
+		print_v v "Thus, we can't get a core image online. "
+		print_v v "Checking to see if there is a local pre-downloaded versions with SHA256SUM. In $LOCAL_VENDOR_ROOT_DIR "
+		if [[ -r "$LOCAL_VENDOR_ROOT_DIR/${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}/$docker_date/${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}" ]] ; then
+			local_file_archive="$LOCAL_VENDOR_ROOT_DIR/${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}/$docker_date/${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}"
+			print_v v "Using: $local_file_archive"
 			greatest_date="$docker_date"
 			return 0
 		else 
-			echo "Can't find: $local_file_archive . Exiting. "
+			echo "Can't find Online Image, and can't find Local Image at: $local_file_archive . Exiting. "
 			exit 1
 		fi
 	fi
@@ -368,7 +378,7 @@ DOCKER_CONTENT_TRUST=1
 DOCKER_TAG=""
 DEBUG='false'
 VERBOSE='false'
-optstring="hvndr:t:c:"
+optstring="hlvndr:t:c:"
 while getopts ${optstring} arg; do
 	case ${arg} in
 	c)
@@ -377,6 +387,9 @@ while getopts ${optstring} arg; do
 	h)
 		print_usage
 		exit 0
+	;;
+	l)
+		LOCAL_ONLY='true'
 	;;
 	n)
 		DRY_RUN='true'
@@ -495,17 +508,15 @@ else
 fi
 
 THIS_DOCKER_VENDOR_IMAGE=""
-which_docker_core_image "https://${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}" "$IMAGE_CREATION_DATE" "${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}" THIS_DOCKER_VENDOR_DATE LOCAL_ONLY
+which_docker_core_image "https://${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}" "$IMAGE_CREATION_DATE" "${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}" THIS_DOCKER_VENDOR_DATE LOCAL_CACHE_FILE
 
 if [[ $THIS_DOCKER_VENDOR_DATE == "" ]]; then
 	echo "Error: No vendor date"
 	exit 1
 fi
 
-if [[ "$LOCAL_ONLY" != 'false' ]]; then
-	print_v d "LOCAL_ONLY not false = $LOCAL_ONLY"
-	LOCAL_ONLY="true"
-	print_v d "LOCAL_ONLY = true"
+if [[ "$LOCAL_CACHE_FILE" != '' ]]; then
+	print_v d "LOCAL_CACHE_FILE = $LOCAL_CACHE_FILE"
 fi
 
 THIS_DOCKER_VENDOR_IMAGE="${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}/$THIS_DOCKER_VENDOR_DATE/${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}"
@@ -540,8 +551,9 @@ if [[ ${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]} =~ "Dockerfile" ]]; then
 	else
 		print_v v "Dry Run: Skipping download of $this_uri"
 	fi
-elif [[ $LOCAL_ONLY == "true" ]]; then
-	echo "No Online image, falling back to saved version"
+elif [[ $LOCAL_ONLY == "true" && $LOCAL_CACHE_FILE != "" ]]; then
+	echo "Skip Online image download, falling back to saved version at $LOCAL_CACHE_FILE"
+	DO_HASH_CHECK='true'
 else 
 	DOCKERFILE_ONLY='false'
 	print_v v "About to download $THIS_DOCKER_VENDOR_IMAGE_URL"
