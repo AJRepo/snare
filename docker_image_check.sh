@@ -322,13 +322,16 @@ function which_docker_core_image() {
 		local_hmsdate="${date_dir}000000"
 		print_v d "Testing if $local_hmsdate, $date_dir <= $docker_date"
 		if [ "$local_hmsdate" -le "$docker_date" ]; then
-			print_v d "Yes Local $local_hmsdate <= Image $docker_date"
+			print_v d "Yes, Local $local_hmsdate <= Image $docker_date"
 			greatest_date=$date_dir
+		else
+			print_v d "No, Local $local_hmsdate > Image $docker_date"
 		fi
 	done
 
 	if [[ $greatest_date != "" ]]; then
 		this_docker_vendor_image="$core_url/$greatest_date/$this_source_image_file"
+		print_v d "Greatest Date Found = $greatest_date"
 	else
 		local_file_archive="$LOCAL_VENDOR_ROOT_DIR/${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}/$docker_date/${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}"
 		echo "The dates at $core_url do not match or are greater than the creation date of the docker image $docker_date ."
@@ -360,7 +363,7 @@ if [[ ${#} -eq 0 ]]; then
 	exit 1
 fi
 
-LOCAL_ONLY=0
+LOCAL_ONLY='false'
 DOCKER_CONTENT_TRUST=1
 DOCKER_TAG=""
 DEBUG='false'
@@ -499,8 +502,10 @@ if [[ $THIS_DOCKER_VENDOR_DATE == "" ]]; then
 	exit 1
 fi
 
-if [[ "$LOCAL_ONLY" != "" ]]; then
+if [[ "$LOCAL_ONLY" != 'false' ]]; then
+	print_v d "LOCAL_ONLY not false = $LOCAL_ONLY"
 	LOCAL_ONLY="true"
+	print_v d "LOCAL_ONLY = true"
 fi
 
 THIS_DOCKER_VENDOR_IMAGE="${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}/$THIS_DOCKER_VENDOR_DATE/${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}"
