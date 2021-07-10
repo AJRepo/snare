@@ -604,8 +604,12 @@ fi
 
 if [[ $CAN_DO_DIFF == 'true' ]]; then
 	print_v d "About to run ./tests.d/SCAP_docker.sh $DOCKER_DELIVERED_TAR_DIR $DOCKER_VENDOR_TAR_DIR"
-	# shellcheck disable=1091
-	source ./tests.d/SCAP_docker.sh "$DOCKER_DELIVERED_TAR_DIR" "$DOCKER_VENDOR_TAR_DIR"
+	if [[ -x ./tests.d/SCAP_docker.sh ]]; then
+		# shellcheck disable=1091
+		source ./tests.d/SCAP_docker.sh "$DOCKER_DELIVERED_TAR_DIR" "$DOCKER_VENDOR_TAR_DIR"
+	else
+		print_v w "Security check file SCAP_docker.sh not downloaded. Skipping"
+	fi
 fi
 
 print_final_report
