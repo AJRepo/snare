@@ -425,6 +425,8 @@ setup_docker_globals "$DOCKER_ROOT"
 # Nvidia-runtime-> nvidia-base -> Ubuntu
 # gzserver -> Ubuntu
 # libgazebo11 -> gzserver11 -> Ubuntu
+# wordpress:cli -> Alpine
+# wordpress:php8.0 -> Debian
 declare -A aIMAGE_SOURCE_IMAGE_FILE
 aIMAGE_SOURCE_IMAGE_FILE["ubuntu:focal"]="ubuntu-focal-core-cloudimg-amd64-root.tar.gz"
 #aIMAGE_SOURCE_IMAGE_FILE["nvidia:11.0-base"]="https://gitlab.com/nvidia/container-images/cuda/blob/master/dist/11.2.2/ubuntu20.04-x86_64/runtime/cudnn8/Dockerfile"
