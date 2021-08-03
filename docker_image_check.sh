@@ -107,8 +107,20 @@ function extract_docker_image() {
 	fi
 
 	mkdir -p "$this_tar_dir/combined/"
-	find "$this_tar_dir" -name layer.tar \
-		-exec tar --directory "$this_tar_dir/combined/" -xf {} \; 
+	if [ ! -r "$this_tar_dir/manifest.json" ]; then
+		print_v e "Error: manifest.json unable to be found in $this_tar_dir"
+		exit 1
+	else
+		print_v d "Found $this_tar_dir/manifest.json"
+	fi
+	#Need to extract layers in the order they were deposited
+	LAYERS=$(grep -Eo '"Layers":.*?[^\\][,}]' "$this_tar_dir/manifest.json"  | sed -e /.*\\[/s/// | sed -e /[\",]/s//\ /g | sed -e /\\]/s///g | sed -e /\}/s///g)  
+    #"Quote mark in Comment to remove extraneous vim syntax coloring
+	print_v d "LAYERS = $LAYERS"
+    for LAYER in $LAYERS; do
+		print_v d "LAYER $LAYER"
+		tar --directory "$this_tar_dir/combined" -xf "$this_tar_dir/$LAYER"
+	done
 
 	if [ ! -d "$this_tar_dir/combined/etc" ]; then
 		print_v e "Error: Extraction failed. Exiting."
