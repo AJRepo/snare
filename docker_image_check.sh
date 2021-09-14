@@ -35,6 +35,8 @@ function print_usage() {
 	echo '	 -l          Local saved archive of core vendor image instead of wget'
 	echo '   -r <name>   Root docker image to analyze (nvida, ubuntu)'
 	echo '   -t <name>   Docker tag to analyze (e.g. focal)'
+    echo ''
+    echo "Example: $(basename "$0")  -r ubuntu -t focal -c 0"
 	exit 1
 }
 
@@ -617,12 +619,21 @@ fi
 
 
 if [[ $CAN_DO_DIFF == 'true' ]]; then
-	print_v d "About to run ./tests.d/SCAP_docker.sh $DOCKER_DELIVERED_TAR_DIR $DOCKER_VENDOR_TAR_DIR"
-	if [[ -x ./tests.d/SCAP_docker.sh ]]; then
+	print_v d "About to run ./tests.d/40_distro_test.sh $DOCKER_DELIVERED_TAR_DIR $DOCKER_VENDOR_TAR_DIR"
+	if [[ -x ./tests.d/40_distro_test.sh ]]; then
 		# shellcheck disable=1091
-		source ./tests.d/SCAP_docker.sh "$DOCKER_DELIVERED_TAR_DIR" "$DOCKER_VENDOR_TAR_DIR"
+		source ./tests.d/40_distro_test.sh "$DOCKER_DELIVERED_TAR_DIR" "$DOCKER_VENDOR_TAR_DIR"
 	else
-		print_v w "Security check file SCAP_docker.sh not downloaded. Skipping"
+		print_v w "Security check file 40_distro_test.sh not licensed or installed. Skipping"
+	fi
+fi
+if [[ $CAN_DO_DIFF == 'true' ]]; then
+	print_v d "About to run ./tests.d/50_inject_test.sh $DOCKER_IMAGE"
+	if [[ -x ./tests.d/40_distro_test.sh ]]; then
+		# shellcheck disable=1091
+		source ./tests.d/50_inject_test.sh "$DOCKER_IMAGE"
+	else
+		print_v w "Security check file 50_inject_test.sh not licensed or installed. Skipping"
 	fi
 fi
 
