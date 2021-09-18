@@ -1,8 +1,8 @@
 # Snare
 
-Review Docker images to check for issues (primarily security issues) prior to container activation.
+Review core container images to check for issues (primarily security issues) prior to container activation.
 
-This script was built up to automate checks after finding an unsigned binary added to an officially released docker image between a vendors github code release and the docker preparation. This was undetectible without a deep dive tar analysis as both images were signed.
+This script was built up to automate checks after finding an unsigned binary added to an officially released Docker image between a vendors github code release and the docker preparation. This was undetectible without a deep dive tar analysis as both images were signed.
 
 This code is distributed under a dual license: an open source license, and a commercial license. The open source license is distributed is the GNU Public License version 3 (GPLv3) for any usage that is non-commerical. For commercial or government licensing please contact via email or github issues.
 
@@ -12,7 +12,7 @@ This script then compares the local cached image to the docker image and then ru
 
 This requires the commands "docker", "tar" and "wget" to be available on the testing machine (as well as the usual Bash tools like awk/sed/grep/etc). 
 
-It does not run any docker containers, and allows analyzing the containers before they are run.
+It does not run any Docker containers, and allows analyzing the containers before they are run.
 
 How to use:
 
@@ -24,7 +24,7 @@ Usage: snare_image_check.sh
    -v          Verbose mode (print more)
    -l          Local saved archive of core vendor image instead of using wget
    -n          Dry Run (do not download)
-   -r <name>   Root docker image to analyze (nvida, ubuntu)
+   -r <name>   Root Docker image to analyze (nvida, ubuntu)
    -t <name>   Docker tag to analyze (e.g. focal)
 ```
 
