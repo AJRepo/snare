@@ -1,4 +1,4 @@
-# docker_image_checks
+# Snare
 
 Review Docker images to check for issues (primarily security issues) prior to container activation.
 
@@ -17,7 +17,7 @@ It does not run any docker containers, and allows analyzing the containers befor
 How to use:
 
 ```
-Usage: docker_image_check.sh
+Usage: snare_image_check.sh
    -c <0|1>    DOCKER_CONTENT_TRUST= (defaults to 1)
    -d          Debug mode (print more)
    -h          Help
@@ -35,4 +35,4 @@ Usage: docker_image_check.sh
 
 # Examples:
 
-**Ubuntu Focal (20.04) with DOCKER_CONTENT_TRUST=0:** ./docker_image_check.sh -c 0 -d -v -r ubuntu -t focal
+**Ubuntu Focal (20.04) with DOCKER_CONTENT_TRUST=0:** ./snare_image_check.sh -c 0 -d -v -r ubuntu -t focal

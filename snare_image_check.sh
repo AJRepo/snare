@@ -1,7 +1,7 @@
 #!/bin/bash
 #set -x
 #
-# docker_image_checks - Security Checks of Docker Images
+# Snare - Security Checks of Container Images
 # Copyright (C) AJRepo
 
 #Supported TAGS
