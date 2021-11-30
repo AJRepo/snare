@@ -629,7 +629,7 @@ if [[ $CAN_DO_DIFF == 'true' ]]; then
 fi
 if [[ $CAN_DO_DIFF == 'true' ]]; then
 	print_v d "About to run ./tests.d/50_inject_test.sh $DOCKER_IMAGE"
-	if [[ -x ./tests.d/40_distro_test.sh ]]; then
+	if [[ -x ./tests.d/50_distro_test.sh ]]; then
 		# shellcheck disable=1091
 		source ./tests.d/50_inject_test.sh "$DOCKER_IMAGE"
 	else
