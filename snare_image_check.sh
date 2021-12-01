@@ -108,6 +108,13 @@ function extract_docker_image() {
 		print_v w "Unable to delete temp file /tmp/docker_save_tmp.tar. Continuing."
 	fi
 
+	consolidate_layers "$this_tar_dir"
+}
+
+# Function consolidate_layers() Creates a directory $dir/combined from manifest
+# input this_tar_dir=$1
+function consolidate_layers() {
+	this_tar_dir=$1
 	mkdir -p "$this_tar_dir/combined/"
 	if [ ! -r "$this_tar_dir/manifest.json" ]; then
 		print_v e "Error: manifest.json unable to be found in $this_tar_dir"
@@ -130,7 +137,7 @@ function extract_docker_image() {
 	fi
 }
 
-# Function create_tmp_dir() Creates a tmp dir if it doesn't exist and warns else
+# Function create_tmp_dir() Creates a tmp dir if not exists and warns else
 # input: this_location=$1
 function create_tmp_dir() {
 	this_location=$1
