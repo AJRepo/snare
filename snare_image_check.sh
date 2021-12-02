@@ -5,10 +5,13 @@
 # Copyright (C) AJRepo
 
 #Supported TAGS
-# Not all Docker Images support this. So can't use.  
+# Not all Docker Images support this. So can't use.
 #SUPPORTED_TAGS="https://registry.hub.docker.com/v1/repositories/$IMAGE/tags
 #                https://hub.docker.com/r/nvidia/cuda/tags?page=1&ordering=last_updated
 # Nvidia: 11.2.2-cudnn8-runtime-ubuntu20.04, 11.2.2-cudnn8-runtime-ubuntu20.04
+
+#THIS_DOCKER_IMAGE = $this_docker_core:$this_docker_tag
+#THIS_DOCKER_VENDOR_IMAGE_URL="https://${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_CORE_PATH[$THIS_DOCKER_TAG]}/$THIS_DOCKER_VENDOR_DATE/${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}"
 
 SECURITY_RISK_LEVEL=0
 SECURITY_WARNINGS=()
@@ -35,9 +38,86 @@ function print_usage() {
 	echo '	 -l          Local saved archive of core vendor image instead of wget'
 	echo '   -r <name>   Root docker image to analyze (nvida, ubuntu)'
 	echo '   -t <name>   Docker tag to analyze (e.g. focal)'
-    echo ''
-    echo "Example: $(basename "$0")  -r ubuntu -t focal -c 0"
+	echo ''
+	echo "Example: $(basename "$0")  -r ubuntu -t focal -c 0"
 	exit 1
+}
+
+#Function declare_globals
+# We have to create mappings between image vendors to their docker releases
+# this is where we track the mappings
+#   Notes; https://github.com/docker-library/repo-info/blob/master/repos/ubuntu/local/20.04.md
+function declare_global_mappings() {
+	print_v d "In declare_global_mappings"
+	#Declare Associative Array Variables for various sources
+	#Notes:
+	# Nvidia-base -> Ubuntu
+	# Nvidia-runtime-> nvidia-base -> Ubuntu
+	# gzserver -> Ubuntu
+	# libgazebo11 -> gzserver11 -> Ubuntu
+	# wordpresscli -> Alpine
+	# wordpress:php8.0 -> Debian
+	# Don't "declare -A" in a function if you are using that variable globally. Use declare -a after defining it
+	aIMAGE_SOURCE_IMAGE_FILE["ubuntu:focal"]="ubuntu-focal-core-cloudimg-amd64-root.tar.gz"
+	#aIMAGE_SOURCE_IMAGE_FILE["nvidia:11.0-base"]="https://gitlab.com/nvidia/container-images/cuda/blob/master/dist/11.2.2/ubuntu20.04-x86_64/runtime/cudnn8/Dockerfile"
+	aIMAGE_SOURCE_IMAGE_FILE["nvidia:11.0-base"]="https://gitlab.com/nvidia/container-images/cuda/-/raw/master/dist/11.2.2/ubuntu20.04-x86_64/base/Dockerfile"
+	aIMAGE_SOURCE_IMAGE_FILE["nvidia:11.2.2-runtime"]="https://gitlab.com/nvidia/container-images/cuda/-/raw/master/dist/11.2.2/ubuntu20.04-x86_64/runtime/Dockerfile"
+	#aIMAGE_SOURCE_IMAGE_FILE["gazebo:gzserver11"]="https://github.com/osrf/docker_images/blob/9cff18454e36bdaa182931c86a8c64205e51a2de/gazebo/11/ubuntu/focal/gzserver11/Dockerfile"
+	aIMAGE_SOURCE_IMAGE_FILE["gazebo:gzserver11"]="https://raw.githubusercontent.com/osrf/docker_images/master/gazebo/11/ubuntu/focal/gzserver11/Dockerfile"
+	aIMAGE_SOURCE_IMAGE_FILE["gazebo:gzserver11-focal"]="https://raw.githubusercontent.com/osrf/docker_images/master/gazebo/11/ubuntu/focal/gzserver11/Dockerfile"
+	#aIMAGE_SOURCE_IMAGE_FILE["gazebo:libgazebo11-focal"]="https://github.com/osrf/docker_images/blob/9cff18454e36bdaa182931c86a8c64205e51a2de/gazebo/11/ubuntu/focal/libgazebo11/Dockerfile"
+	aIMAGE_SOURCE_IMAGE_FILE["gazebo:libgazebo11-focal"]="https://raw.githubusercontent.com/osrf/docker_images/9cff18454e36bdaa182931c86a8c64205e51a2de/gazebo/11/ubuntu/focal/libgazebo11/Dockerfile"
+	aIMAGE_SOURCE_IMAGE_FILE["ubuntu/apache2"]="ubuntu-focal-core-cloudimg-amd64-root.tar.gz"
+	#set readonly
+	declare -r aIMAGE_SOURCE_IMAGE_FILE
+
+	aIMAGE_CORE["ubuntu"]="partner-images.canonical.com/core/"
+	aIMAGE_CORE["nvidia"]="gitlab.com/nvidia/container-images/cuda/blob/master/dist/11.2.2/ubuntu20.04-x86_64/runtime/"
+	aIMAGE_CORE["gazebo"]="https://github.com/docker-library/repo-info/tree/master/repos/gazebo"
+	aIMAGE_CORE["ubuntu/apache2"]="partner-images.canonical.com/core/"
+	#set readonly
+	declare -r aIMAGE_CORE
+
+	aIMAGE_CORE_PATH["focal"]="focal/"
+	aIMAGE_CORE_PATH["11.0-base"]="cudnn8/"
+	aIMAGE_CORE_PATH["libgazebo11-focal"]="libgazebo11-focal"
+	aIMAGE_CORE_PATH["ubuntu/apache2"]="focal/"
+	#set readonly
+	declare -r aIMAGE_CORE_PATH
+
+	# DockerCore: https://hub.docker.com/_/gazebo
+	# DockerCore: https://registry.hub.docker.com/r/nvidia/cuda
+	# DockerCore: https://registry.hub.docker.com/_/ubuntu
+	#gazebo:libgazebo11-focal
+	aIMAGE_BACKING_SOURCE["ubuntu:focal"]="ubuntu:focal"
+	aIMAGE_BACKING_SOURCE["nvidia:11.0-base"]="ubuntu:focal"
+	aIMAGE_BACKING_SOURCE["gazebo:libgazebo11-focal"]="ubuntu:focal"
+	aIMAGE_BACKING_SOURCE["ubuntu/apache2"]="ubuntu:focal"
+	declare -r aIMAGE_BACKING_SOURCE
+
+	#Docker syntax as VENDOR_ROOT/PRODUCT:TAG
+
+	#What is the vendor root image to analyze
+	aIMAGE_ROOT["ubuntu"]="ubuntu"
+	aIMAGE_ROOT["ubuntu20"]="ubuntu"
+	aIMAGE_ROOT["nvidia"]="nvidia"
+	aIMAGE_ROOT["ubuntu/apache2"]="ubuntu"
+	declare -r aIMAGE_ROOT
+
+	#For the tag given, what is the vendor's root tag to compare to?
+	aIMAGE_TAG["ubuntu"]="focal"
+	aIMAGE_TAG["ubuntu20"]="focal"
+	aIMAGE_TAG["nvidia"]="11.0-base"
+	aIMAGE_TAG["ubuntu/apache2"]="latest"
+	declare -r aIMAGE_TAG
+
+	#To always specify a /product for a particular vendor_root
+	#For example: "nvidia" here also specifies nvidia/cuda
+	aIMAGE_PRODUCT["ubuntu"]=""
+	aIMAGE_PRODUCT["ubuntu20"]=""
+	aIMAGE_PRODUCT["nvidia"]="cuda"
+	aIMAGE_PRODUCT["apache2"]="apache2"
+	declare -r aIMAGE_PRODUCT
 }
 
 #Function print_v
@@ -70,13 +150,13 @@ function print_v() {
 # input: global $SECURITY_RISK_LEVEL
 # input: global $SECURITY_WARNINGS[]
 function print_final_report() {
-	
+
 	echo "Report for $DOCKER_IMAGE"
 	echo "   DOCKER_IMAGE_HASH=$DOCKER_HASH"
 	#echo "Original Source image = ${aIMAGE_SOURCE_URL[$DOCKER_IMAGE]}"
 	echo "   SECURITY RISK LEVEL = $SECURITY_RISK_LEVEL"
 	echo "   Security Warnings:"
-	
+
 	for SECURITY_WARNING in "${SECURITY_WARNINGS[@]}"
 	do
 		echo "      * $SECURITY_WARNING"
@@ -116,6 +196,7 @@ function extract_docker_image() {
 function consolidate_layers() {
 	this_tar_dir=$1
 	mkdir -p "$this_tar_dir/combined/"
+	print_v d "Consolidating to $this_tar_dir/combined"
 	if [ ! -r "$this_tar_dir/manifest.json" ]; then
 		print_v e "Error: manifest.json unable to be found in $this_tar_dir"
 		exit 1
@@ -123,10 +204,10 @@ function consolidate_layers() {
 		print_v d "Found $this_tar_dir/manifest.json"
 	fi
 	#Need to extract layers in the order they were deposited
-	LAYERS=$(grep -Eo '"Layers":.*?[^\\][,}]' "$this_tar_dir/manifest.json"  | sed -e /.*\\[/s/// | sed -e /[\",]/s//\ /g | sed -e /\\]/s///g | sed -e /\}/s///g)  
-    #"Quote mark in Comment to remove extraneous vim syntax coloring
+	LAYERS=$(grep -Eo '"Layers":.*?[^\\][,}]' "$this_tar_dir/manifest.json"  | sed -e /.*\\[/s/// | sed -e /[\",]/s//\ /g | sed -e /\\]/s///g | sed -e /\}/s///g)
+	#"Quote mark in Comment to remove extraneous vim syntax coloring
 	print_v d "LAYERS = $LAYERS"
-    for LAYER in $LAYERS; do
+	for LAYER in $LAYERS; do
 		print_v d "LAYER $LAYER"
 		tar --directory "$this_tar_dir/combined" -xf "$this_tar_dir/$LAYER"
 	done
@@ -151,7 +232,7 @@ function create_tmp_dir() {
 
 #Function: set_docker_param(): set the param based on docker root
 # input: return_val=$1      return variable
-# input: aa_valid_params=$2 return associative array with valid parameters 
+# input: aa_valid_params=$2 return associative array with valid parameters
 # input: param_to_lookup=$3 the key parameter to look up in $2 variable
 function set_docker_param() {
 	local known_docker_param='false'
@@ -169,6 +250,7 @@ function set_docker_param() {
 		return_val=${aa_valid_params[$this_docker_core]}
 		known_docker_param='true'
 	else
+		print_v d " Valid Strings: ${aa_valid_params[*]} "
 		if [[ ${aa_valid_params[$param_to_lookup]} != "" ]]; then
 			return_val=${aa_valid_params[$param_to_lookup]}
 			known_docker_param='true'
@@ -176,7 +258,8 @@ function set_docker_param() {
 	fi
 
 	if [[ $known_docker_param == 'false' ]]; then
-		print_v d " Unknown Docker Param. Returning '' "
+		print_v d " Unknown Docker Param $param_to_lookup. Returning '' "
+		print_v d " Valid Strings: ${aa_valid_params[*]} "
 		return_val=''
 	else
 		print_v d " Docker Param=$return_val"
@@ -188,30 +271,18 @@ function set_docker_param() {
 # Function: pass in root and optionally tag, product for analysis
 # this_docker_core string: is required
 function setup_docker_globals() {
-    local optarg_docker_root=$1
-    local this_docker_tag=$2
+	local optarg_docker_root=$1
+	local this_docker_tag=$2
 	local this_docker_product=''
-    local this_docker_core=''
+	local this_docker_core=''
 
-	declare -A aIMAGE_ROOT
-	declare -A aIMAGE_TAG
-	declare -A aIMAGE_PRODUCT
-
-	aIMAGE_ROOT["ubuntu"]="ubuntu"
-	aIMAGE_ROOT["ubuntu20"]="ubuntu"
-	aIMAGE_ROOT["nvidia"]="nvidia"
-
-	aIMAGE_TAG["ubuntu"]="focal"
-	aIMAGE_TAG["ubuntu20"]="focal"
-	aIMAGE_TAG["nvidia"]="11.0-base"
-
-	aIMAGE_PRODUCT["ubuntu"]=""
-	aIMAGE_PRODUCT["nvidia"]="cuda"
 
 	print_v d " $this_docker_core with " "${aIMAGE_ROOT[@]}"
 
-	#set variable this_docker_tag
+	#set variable this_docker_core
+	print_v d " about to call set_docker_core from aIMAGE_ROOT with core = $optarg_docker_root"
 	set_docker_param this_docker_core aIMAGE_ROOT "$optarg_docker_root"
+	print_v d "CORE set = $this_docker_core"
 	if [[ $this_docker_core == '' ]]; then
 		echo "Error: No docker root set. Exiting 1"
 		exit 1
@@ -220,10 +291,12 @@ function setup_docker_globals() {
 	#print_v d " about to lookup aIMAGE_PRODUCT"
 	#set variable this_docker_tag
 	if [[ $DOCKER_TAG == "" ]]; then
+		print_v d " about to call set_docker_param with core = $this_docker_core"
 		set_docker_param this_docker_tag aIMAGE_TAG "$this_docker_core"
 	else
 		this_docker_tag=$DOCKER_TAG
 	fi
+	print_v d "TAG set = $this_docker_tag"
 
 	if [[ $this_docker_tag == 'false' ]]; then
 		echo "Error: Docker tag not set. Used " "${aIMAGE_TAG[@]}" " Error: exiting"
@@ -233,7 +306,7 @@ function setup_docker_globals() {
 	fi
 
 	#set variable this_docker_product
-	print_v d " about to lookup aIMAGE_PRODUCT"
+	print_v d " about to lookup aIMAGE_PRODUCT for $this_docker_core"
 	set_docker_param this_docker_product aIMAGE_PRODUCT "$this_docker_core"
 
 	if [[ $this_docker_product == 'false' ]]; then
@@ -252,6 +325,9 @@ function setup_docker_globals() {
 	THIS_DOCKER_PRODUCT="$this_docker_product"
 	DOCKER_IMAGE="$this_docker_core:$this_docker_tag"
 	print_v v "THIS DOCKER_IMAGE = $DOCKER_IMAGE"
+
+	#DEBUG: Stop here to check stuff.
+	#exit 0
 }
 
 #Function: docker_256sum_check() download and check hashes for docker image
@@ -297,7 +373,7 @@ function download_source_image() {
 		else
 			print_v v "Dry Run: Skipping download of $this_uri"
 		fi
-	
+
 	else
 		echo "Couldn't find vendor's source image file. Exiting."
 		exit 1
@@ -313,7 +389,7 @@ function docker_creation_date() {
 	local rawdate=""
 
 	rawdate=$(sudo docker inspect "$image" | grep Created | awk '{print $2}' | sed -e /,/s/// | sed -e /\"/s///g )
-	
+
 	if [[ $rawdate == "" ]]; then
 		echo "Error: Blank date"
 		exit 1
@@ -325,7 +401,7 @@ function docker_creation_date() {
 		exit 1
 	fi
 }
-	
+
 
 # Function: Which_docker_core()
 function which_docker_core_image() {
@@ -340,7 +416,9 @@ function which_docker_core_image() {
 		"Error in getting core_url, exiting"
 		exit 1
 	fi
-	
+
+	print_v d "CORE_URL=$core_url"
+	print_v d "Docker_date=$docker_date"
 	for date_dir in $(wget -q --level=0 -O - "$core_url" | sed -e /current/d | grep folder | sed /.*href=\"/s/// | sed /\\/.*/s///); do
 		local_hmsdate="${date_dir}000000"
 		print_v d "Testing if $local_hmsdate, $date_dir <= $docker_date"
@@ -352,28 +430,28 @@ function which_docker_core_image() {
 		fi
 	done
 
-    #Look for online version at $greatest_date
+	#Look for online version at $greatest_date
 	if [[ $greatest_date != "" ]]; then
 		this_docker_vendor_image="$core_url/$greatest_date/$this_source_image_file"
 		print_v d "Greatest Date Found = $greatest_date"
 		print_v d "Checking to see if there is a local pre-downloaded version in $LOCAL_VENDOR_ROOT_DIR "
-		if [[ -r "$LOCAL_VENDOR_ROOT_DIR/${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}/$greatest_date/${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}" ]] ; then
+		if [[ -r "$LOCAL_VENDOR_ROOT_DIR/${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_CORE_PATH[$THIS_DOCKER_TAG]}/$greatest_date/${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}" ]] ; then
 			print_v d "Found local archive"
-			local_file_archive="$LOCAL_VENDOR_ROOT_DIR/${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}/$greatest_date/${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}"
+			local_file_archive="$LOCAL_VENDOR_ROOT_DIR/${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_CORE_PATH[$THIS_DOCKER_TAG]}/$greatest_date/${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}"
 		else
-			print_v d "Did not find local archive in $LOCAL_VENDOR_ROOT_DIR/${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}/$greatest_date/${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}"
+			print_v d "Did not find local archive in $LOCAL_VENDOR_ROOT_DIR/${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_CORE_PATH[$THIS_DOCKER_TAG]}/$greatest_date/${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}"
 		fi
 	else
 		#Else look for local version at $docker_date (not $greatest_date)
 		print_v v "The dates at $core_url do not match or are greater than the creation date of the docker image $docker_date ."
 		print_v v "Thus, we can't get a core image online. "
 		print_v v "Checking to see if there is a local pre-downloaded versions with SHA256SUM. In $LOCAL_VENDOR_ROOT_DIR "
-		if [[ -r "$LOCAL_VENDOR_ROOT_DIR/${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}/$docker_date/${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}" ]] ; then
-			local_file_archive="$LOCAL_VENDOR_ROOT_DIR/${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}/$docker_date/${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}"
+		if [[ -r "$LOCAL_VENDOR_ROOT_DIR/${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_CORE_PATH[$THIS_DOCKER_TAG]}/$docker_date/${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}" ]] ; then
+			local_file_archive="$LOCAL_VENDOR_ROOT_DIR/${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_CORE_PATH[$THIS_DOCKER_TAG]}/$docker_date/${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}"
 			print_v v "Using: $local_file_archive"
 			greatest_date="$docker_date"
 			return 0
-		else 
+		else
 			echo "Can't find Online Image, and can't find Local Image at: $local_file_archive . Exiting. "
 			exit 1
 		fi
@@ -434,55 +512,28 @@ done
 print_v d "BASH_SOURCE=${BASH_SOURCE[0]}"
 print_v d "PWD=$PWD"
 
+declare -A aIMAGE_SOURCE_IMAGE_FILE
+declare -A aIMAGE_CORE
+declare -A aIMAGE_CORE_PATH
+declare -A aIMAGE_BACKING_SOURCE
+declare -A aIMAGE_ROOT
+declare -A aIMAGE_TAG
+declare -A aIMAGE_PRODUCT
+
+declare_global_mappings
+
+#find the mapping for DOCKER_ROOT and set it up
 setup_docker_globals "$DOCKER_ROOT"
 
 #which image to analyze
-#Notes; https://github.com/docker-library/repo-info/blob/master/repos/ubuntu/local/20.04.md
 
-
-#Declare Associative Array Variables for various sources
-#Notes: 
-# Nvidia-base -> Ubuntu
-# Nvidia-runtime-> nvidia-base -> Ubuntu
-# gzserver -> Ubuntu
-# libgazebo11 -> gzserver11 -> Ubuntu
-# wordpress:cli -> Alpine
-# wordpress:php8.0 -> Debian
-declare -A aIMAGE_SOURCE_IMAGE_FILE
-aIMAGE_SOURCE_IMAGE_FILE["ubuntu:focal"]="ubuntu-focal-core-cloudimg-amd64-root.tar.gz"
-#aIMAGE_SOURCE_IMAGE_FILE["nvidia:11.0-base"]="https://gitlab.com/nvidia/container-images/cuda/blob/master/dist/11.2.2/ubuntu20.04-x86_64/runtime/cudnn8/Dockerfile"
-aIMAGE_SOURCE_IMAGE_FILE["nvidia:11.0-base"]="https://gitlab.com/nvidia/container-images/cuda/-/raw/master/dist/11.2.2/ubuntu20.04-x86_64/base/Dockerfile"
-aIMAGE_SOURCE_IMAGE_FILE["nvidia:11.2.2-runtime"]="https://gitlab.com/nvidia/container-images/cuda/-/raw/master/dist/11.2.2/ubuntu20.04-x86_64/runtime/Dockerfile"
-#aIMAGE_SOURCE_IMAGE_FILE["gazebo:gzserver11"]="https://github.com/osrf/docker_images/blob/9cff18454e36bdaa182931c86a8c64205e51a2de/gazebo/11/ubuntu/focal/gzserver11/Dockerfile"
-aIMAGE_SOURCE_IMAGE_FILE["gazebo:gzserver11"]="https://raw.githubusercontent.com/osrf/docker_images/master/gazebo/11/ubuntu/focal/gzserver11/Dockerfile"
-aIMAGE_SOURCE_IMAGE_FILE["gazebo:gzserver11-focal"]="https://raw.githubusercontent.com/osrf/docker_images/master/gazebo/11/ubuntu/focal/gzserver11/Dockerfile"
-#aIMAGE_SOURCE_IMAGE_FILE["gazebo:libgazebo11-focal"]="https://github.com/osrf/docker_images/blob/9cff18454e36bdaa182931c86a8c64205e51a2de/gazebo/11/ubuntu/focal/libgazebo11/Dockerfile"
-aIMAGE_SOURCE_IMAGE_FILE["gazebo:libgazebo11-focal"]="https://raw.githubusercontent.com/osrf/docker_images/9cff18454e36bdaa182931c86a8c64205e51a2de/gazebo/11/ubuntu/focal/libgazebo11/Dockerfile"
-
-
-declare -A aIMAGE_CORE
-aIMAGE_CORE["ubuntu"]="partner-images.canonical.com/core/"
-aIMAGE_CORE["nvidia"]="gitlab.com/nvidia/container-images/cuda/blob/master/dist/11.2.2/ubuntu20.04-x86_64/runtime/"
-aIMAGE_CORE["gazebo"]="https://github.com/docker-library/repo-info/tree/master/repos/gazebo"
-
-declare -A aIMAGE_TAG_DIR
-aIMAGE_TAG_DIR["focal"]="focal/"
-aIMAGE_TAG_DIR["11.0-base"]="cudnn8/"
-aIMAGE_TAG_DIR["libgazebo11-focal"]="libgazebo11-focal"
-
-# DockerCore: https://hub.docker.com/_/gazebo
-# DockerCore: https://registry.hub.docker.com/r/nvidia/cuda
-# DockerCore: https://registry.hub.docker.com/_/ubuntu
-#gazebo:libgazebo11-focal
-declare -A aIMAGE_BACKING_SOURCE
-aIMAGE_BACKING_SOURCE["ubuntu:focal"]="ubuntu:focal"
-aIMAGE_BACKING_SOURCE["nvidia:11.0-base"]="ubuntu:focal"
-aIMAGE_BACKING_SOURCE["gazebo:libgazebo11-focal"]="ubuntu:focal"
-#this_source_url=""
-#print_v d " about to run aIMAGE_SOURCE_URL for $DOCKER_IMAGE, $THIS_DOCKER_TAG"
+print_v d " about to run aIMAGE_SOURCE_URL for $DOCKER_IMAGE, $THIS_DOCKER_TAG"
 #set variable this_source_url (where we download the source docker image)
 #set_docker_param this_source_url aIMAGE_SOURCE_URL "$DOCKER_IMAGE"
-#print_v d "SOURCE URL= $this_source_url"
+
+print_v d " aIMAGE_SOURCE_IMAGE_FILE=${aIMAGE_SOURCE_IMAGE_FILE[*]}"
+#Debug: Stop here to check
+#exit
 
 if [[ $THIS_DOCKER_PRODUCT != "" ]]; then
 	IMAGE_VENDOR_PRODUCT="$THIS_DOCKER_CORE/$THIS_DOCKER_PRODUCT"
@@ -531,7 +582,7 @@ else
 fi
 
 THIS_DOCKER_VENDOR_IMAGE=""
-which_docker_core_image "https://${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}" "$IMAGE_CREATION_DATE" "${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}" THIS_DOCKER_VENDOR_DATE LOCAL_CACHE_FILE
+which_docker_core_image "https://${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_CORE_PATH[$THIS_DOCKER_TAG]}" "$IMAGE_CREATION_DATE" "${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}" THIS_DOCKER_VENDOR_DATE LOCAL_CACHE_FILE
 
 if [[ $THIS_DOCKER_VENDOR_DATE == "" ]]; then
 	echo "Error: No vendor date"
@@ -542,16 +593,16 @@ if [[ "$LOCAL_CACHE_FILE" != '' ]]; then
 	print_v d "LOCAL_CACHE_FILE = $LOCAL_CACHE_FILE"
 fi
 
-THIS_DOCKER_VENDOR_IMAGE="${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}/$THIS_DOCKER_VENDOR_DATE/${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}"
-THIS_DOCKER_VENDOR_HASH="${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}/$THIS_DOCKER_VENDOR_DATE/SHA256SUMS"
+THIS_DOCKER_VENDOR_IMAGE="${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_CORE_PATH[$THIS_DOCKER_TAG]}/$THIS_DOCKER_VENDOR_DATE/${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]}"
+THIS_DOCKER_VENDOR_HASH="${aIMAGE_CORE[$THIS_DOCKER_CORE]}/${aIMAGE_CORE_PATH[$THIS_DOCKER_TAG]}/$THIS_DOCKER_VENDOR_DATE/SHA256SUMS"
 THIS_DOCKER_VENDOR_IMAGE_URL="https://$THIS_DOCKER_VENDOR_IMAGE"
 THIS_DOCKER_VENDOR_HASH_URL="https://$THIS_DOCKER_VENDOR_HASH"
 
 print_v d "DOCKER_IMAGE=$DOCKER_IMAGE"
 print_v d "THIS_DOCKER_TAG=$THIS_DOCKER_TAG"
 print_v d "THIS_DOCKER_VENDOR_DATE=$THIS_DOCKER_VENDOR_DATE"
-print_v d "THIS_CORE_DIR=${aIMAGE_CORE[$THIS_DOCKER_CORE]}"
-print_v d "THIS_TAG_DIR=${aIMAGE_TAG_DIR[$THIS_DOCKER_TAG]}"
+print_v d "aIMAGE_CORE=${aIMAGE_CORE[$THIS_DOCKER_CORE]}"
+print_v d "aIMAGE_CORE_PATH=${aIMAGE_CORE_PATH[$THIS_DOCKER_TAG]}"
 print_v d "IMAGE_CREATION_DATE=$IMAGE_CREATION_DATE"
 print_v d "THIS_DOCKER_VENDOR_IMAGE=$THIS_DOCKER_VENDOR_IMAGE"
 print_v d "aIMAGE_BACKING_SOURCE=${aIMAGE_BACKING_SOURCE[$DOCKER_IMAGE]}"
@@ -577,7 +628,7 @@ if [[ ${aIMAGE_SOURCE_IMAGE_FILE[$DOCKER_IMAGE]} =~ "Dockerfile" ]]; then
 elif [[ $LOCAL_ONLY == "true" && $LOCAL_CACHE_FILE != "" ]]; then
 	echo "Skip Online image download, falling back to saved version at $LOCAL_CACHE_FILE"
 	DO_HASH_CHECK='true'
-else 
+else
 	DOCKERFILE_ONLY='false'
 	print_v v "About to download $THIS_DOCKER_VENDOR_IMAGE_URL"
 	download_source_image "$THIS_DOCKER_VENDOR_IMAGE_URL" $LOCAL_VENDOR_ROOT_DIR
@@ -586,7 +637,7 @@ else
 		SECURITY_RISK_LEVEL=$((SECURITY_RISK_LEVEL + 1))
 		SECURITY_WARNINGS+=("Image not signed by vendor")
 		DO_HASH_CHECK='false'
-	else 
+	else
 		download_source_image "$THIS_DOCKER_VENDOR_HASH_URL" $LOCAL_VENDOR_ROOT_DIR
 		DO_HASH_CHECK='true'
 	fi
