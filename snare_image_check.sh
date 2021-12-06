@@ -23,7 +23,6 @@ DRY_RUN='false'
 DEBUG='false'
 VERBOSE='false'
 
-
 #################################################################
 #Begin Functions
 #################################################################
@@ -143,7 +142,6 @@ function print_v() {
 	esac
 }
 
-
 #Function: print_final_report() Prints final security risk report
 # input: global $DOCKER_HASH
 # input: global $DOCKER_IMAGE
@@ -151,7 +149,7 @@ function print_v() {
 # input: global $SECURITY_WARNINGS[]
 function print_final_report() {
 
-	echo "Report for $DOCKER_IMAGE"
+	echo "Report for $DOCKER_IMGTAG_OPTARG"
 	echo "   DOCKER_IMAGE_HASH=$DOCKER_HASH"
 	#echo "Original Source image = ${aIMAGE_SOURCE_URL[$DOCKER_IMAGE]}"
 	echo "   SECURITY RISK LEVEL = $SECURITY_RISK_LEVEL"
@@ -223,7 +221,7 @@ function consolidate_layers() {
 function create_tmp_dir() {
 	this_location=$1
 	if [ ! -d "$this_location" ]; then
-		mkdir "$this_location"
+		mkdir -p "$this_location"
 	else
 		echo "$this_location already exits, cowardly stopping"
 		exit 1
@@ -325,6 +323,7 @@ function setup_docker_globals() {
 	THIS_DOCKER_PRODUCT="$this_docker_product"
 	DOCKER_IMAGE="$this_docker_core:$this_docker_tag"
 	print_v v "THIS DOCKER_IMAGE = $DOCKER_IMAGE"
+	print_v v "THIS DOCKER_IMGTAG_OPTARG = $DOCKER_IMGTAG_OPTARG"
 
 	#DEBUG: Stop here to check stuff.
 	#exit 0
@@ -475,6 +474,8 @@ fi
 LOCAL_ONLY='false'
 DOCKER_CONTENT_TRUST=1
 DOCKER_TAG=""
+DOCKER_TAG_OPTARG=""
+DOCKER_IMAGE_OPTARG=""
 DEBUG='false'
 VERBOSE='false'
 optstring="hlvndr:t:c:"
@@ -501,13 +502,21 @@ while getopts ${optstring} arg; do
 	;;
 	r)
 		DOCKER_ROOT="${OPTARG}"
+		DOCKER_IMAGE_OPTARG="${OPTARG}"
 	;;
 	t)
 		DOCKER_TAG="${OPTARG}"
+		DOCKER_TAG_OPTARG="${OPTARG}"
 		print_v v "Docker Tag not yet implemented $DOCKER_TAG"
 	;;
 	esac
 done
+
+if [[ $DOCKER_TAG_OPTARG == "" ]]; then
+	DOCKER_IMGTAG_OPTARG="$DOCKER_IMAGE_OPTARG"
+else
+	DOCKER_IMGTAG_OPTARG="$DOCKER_IMAGE_OPTARG:$DOCKER_TAG_OPTARG"
+fi
 
 print_v d "BASH_SOURCE=${BASH_SOURCE[0]}"
 print_v d "PWD=$PWD"
@@ -527,7 +536,7 @@ setup_docker_globals "$DOCKER_ROOT"
 
 #which image to analyze
 
-print_v d " about to run aIMAGE_SOURCE_URL for $DOCKER_IMAGE, $THIS_DOCKER_TAG"
+print_v d " about to run aIMAGE_SOURCE_URL for $DOCKER_IMGTAG_OPTARG, $DOCKER_IMAGE, $THIS_DOCKER_TAG"
 #set variable this_source_url (where we download the source docker image)
 #set_docker_param this_source_url aIMAGE_SOURCE_URL "$DOCKER_IMAGE"
 
@@ -545,13 +554,13 @@ fi
 #DOCKER_IMAGE="$IMAGE_VENDOR_PRODUCT:${IMAGE_TAGS[$i]}"
 
 #Download docker source image if it passes docker signing
-print_v v "About to download docker image using 'sudo docker pull $DOCKER_IMAGE'"
+print_v v "About to download docker image using 'sudo docker pull $DOCKER_IMGTAG_OPTARG'"
 if [[ $DOCKER_CONTENT_TRUST != 1 ]]; then
 	SECURITY_RISK_LEVEL=$((SECURITY_RISK_LEVEL + 1))
 	SECURITY_WARNINGS+=("Image not signed by notary.docker.io")
 fi
 
-if ! sudo DOCKER_CONTENT_TRUST="$DOCKER_CONTENT_TRUST" docker pull "$DOCKER_IMAGE"; then
+if ! sudo DOCKER_CONTENT_TRUST="$DOCKER_CONTENT_TRUST" docker pull "$DOCKER_IMGTAG_OPTARG"; then
 	echo "Unable to download Docker Image. Exiting"
 	if [[ $DOCKER_CONTENT_TRUST == 1 ]]; then
 		echo "You used DOCKER_CONTENT_TRUST=1, try '-c 0' "
@@ -561,8 +570,8 @@ fi
 
 
 #CHECK HASH once arrived
-print_v v "About to inspect image using 'sudo docker inspect $DOCKER_IMAGE'"
-DOCKER_HASH=$(sudo docker inspect "$DOCKER_IMAGE" | grep "$IMAGE_VENDOR_PRODUCT@sha256")
+print_v v "About to inspect image using 'sudo docker inspect $DOCKER_IMGTAG_OPTARG'"
+DOCKER_HASH=$(sudo docker inspect "$DOCKER_IMGTAG_OPTARG" | grep "$IMAGE_VENDOR_PRODUCT@sha256")
 
 if [[ $DOCKERFILE_ONLY == 'true' ]]; then
 	echo "Dockerfile only. Can't do diff. Stopping and re-evaluate with core image"
@@ -570,7 +579,7 @@ if [[ $DOCKERFILE_ONLY == 'true' ]]; then
 fi
 
 IMAGE_CREATION_DATE=""
-docker_creation_date "$DOCKER_IMAGE" IMAGE_CREATION_DATE
+docker_creation_date "$DOCKER_IMGTAG_OPTARG" IMAGE_CREATION_DATE
 print_v v "Docker Creation Date = $IMAGE_CREATION_DATE"
 
 DOCKER_LOCAL_IMAGE_DIRECTORY="/srv/dockercheck/docker.$DOCKER_IMAGE.$IMAGE_CREATION_DATE"
@@ -578,7 +587,7 @@ if [ -d "$DOCKER_LOCAL_IMAGE_DIRECTORY" ]; then
 	print_v v "Docker local image already saved"
 else
 	print_v v "Making Directory $DOCKER_LOCAL_IMAGE_DIRECTORY"
-	mkdir "$DOCKER_LOCAL_IMAGE_DIRECTORY" || (echo "Error Can't make dir $DOCKER_LOCAL_IMAGE_DIRECTORY"; exit 1)
+	mkdir -p "$DOCKER_LOCAL_IMAGE_DIRECTORY" || (echo "Error Can't make dir $DOCKER_LOCAL_IMAGE_DIRECTORY"; exit 1)
 fi
 
 THIS_DOCKER_VENDOR_IMAGE=""
@@ -650,7 +659,7 @@ fi
 
 # Extracting the layers and then extracting the layers all to one combined directory.
 # Then analyze shared image to vendor core image
-print_v v "About to do security comparison of $LOCAL_VENDOR_ROOT_DIR/$THIS_DOCKER_VENDOR_IMAGE and $DOCKER_IMAGE"
+print_v v "About to do security comparison of $LOCAL_VENDOR_ROOT_DIR/$THIS_DOCKER_VENDOR_IMAGE and $DOCKER_IMGTAG_OPTARG"
 
 ##Extract Tmp Dirs for security analysis
 DATETIME=$(date +%Y%m%d.%H%M)
@@ -663,18 +672,17 @@ create_tmp_dir "$DOCKER_VENDOR_TAR_DIR"
 print_v d "Created tmp dirs ok"
 
 CAN_DO_DIFF='true'
-if ! extract_docker_image "$DOCKER_IMAGE" "$DOCKER_DELIVERED_TAR_DIR"; then
+if ! extract_docker_image "$DOCKER_IMGTAG_OPTARG" "$DOCKER_DELIVERED_TAR_DIR"; then
 	CAN_DO_DIFF='false'
-	print_v d "Cannot do diff as extract_docker_image to $DOCKER_DELIVERED_TAR_DIR failed"
+	print_v d "Cannot do diff of $DOCKER_IMGTAG_OPTARG as extract_docker_image to $DOCKER_DELIVERED_TAR_DIR failed"
 else
-	print_v d "Extract_docker_image to $DOCKER_DELIVERED_TAR_DIR ok"
+	print_v d "Extract_docker_image $DOCKER_IMGTAG_OPTARG to $DOCKER_DELIVERED_TAR_DIR ok"
 fi
 
 if ! tar -zxf "$LOCAL_VENDOR_ROOT_DIR/$THIS_DOCKER_VENDOR_IMAGE" --directory "$DOCKER_VENDOR_TAR_DIR"; then
 	CAN_DO_DIFF='false'
 	print_v d "Cannot do diff as tar extraction to $DOCKER_VENDOR_TAR_DIR failed"
 fi
-
 
 if [[ $CAN_DO_DIFF == 'true' ]]; then
 	print_v d "About to run ./tests.d/40_distro_test.sh $DOCKER_DELIVERED_TAR_DIR $DOCKER_VENDOR_TAR_DIR"
