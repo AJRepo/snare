@@ -33,6 +33,9 @@ Usage: snare_image_check.sh
 
   The Docker Image format specifications appears to not be well documented. There is an open spec at https://github.com/opencontainers/image-spec
 
-# Examples:
+# Examples: 
 
-**Ubuntu Focal (20.04) with DOCKER_CONTENT_TRUST=0:** ./snare_image_check.sh -c 0 -d -v -r ubuntu -t focal
+Ubuntu Focal (20.04) with DOCKER_CONTENT_TRUST=0 
+```
+    ./snare_image_check.sh -c 0 -d -v -r ubuntu -t focal
+```
